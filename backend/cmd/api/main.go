@@ -135,7 +135,8 @@ func startServer(cfg *config.Config) {
 	databaseHandler := handlers.NewDatabaseHandler(databaseService)
 	emailHandler := handlers.NewEmailHandler(emailService)
 	backupHandler := handlers.NewBackupHandler(backupService)
-	fileHandler := handlers.NewFileHandler()
+	fileManagerSvc := services.NewFileManagerService(pool)
+	fileManagerHandler := handlers.NewFileManagerHandler(fileManagerSvc)
 	deployHandler := handlers.NewDeployHandler(deployService)
 	securityHandler := handlers.NewSecurityHandler(securityService)
 	billingHandler := handlers.NewBillingHandler(billingService)
@@ -442,14 +443,24 @@ func startServer(cfg *config.Config) {
 				backups.DELETE("/:id", backupHandler.Delete)
 			}
 
-			// Phase 2: File Manager
-			files := protected.Group("/files")
+			// File Manager (SSH-based)
+			fm := protected.Group("/files")
 			{
-				files.GET("", fileHandler.List)
-				files.GET("/content", fileHandler.Read)
-				files.PUT("/content", fileHandler.Write)
-				files.POST("/upload", fileHandler.Upload)
-				files.DELETE("", fileHandler.Delete)
+				fm.POST("/list", fileManagerHandler.List)
+				fm.POST("/read", fileManagerHandler.Read)
+				fm.POST("/write", fileManagerHandler.Write)
+				fm.POST("/create", fileManagerHandler.Create)
+				fm.POST("/rename", fileManagerHandler.Rename)
+				fm.POST("/copy", fileManagerHandler.Copy)
+				fm.POST("/move", fileManagerHandler.Move)
+				fm.POST("/delete", fileManagerHandler.Delete)
+				fm.POST("/chmod", fileManagerHandler.Chmod)
+				fm.POST("/chown", fileManagerHandler.Chown)
+				fm.POST("/search", fileManagerHandler.Search)
+				fm.POST("/info", fileManagerHandler.Info)
+				fm.POST("/extract", fileManagerHandler.Extract)
+				fm.POST("/compress", fileManagerHandler.Compress)
+				fm.POST("/grep", fileManagerHandler.Grep)
 			}
 
 			// Phase 3: Deployments
