@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
     LayoutDashboard, Globe, Server, Database, Mail,
     FolderOpen, Shield, Archive, Activity, Rocket,
-    Settings, ChevronLeft, ChevronRight, Zap, CreditCard, Box, Layers, ShieldCheck, ArrowRightLeft, Clock, Cog,
+    Settings, ChevronLeft, ChevronRight, Zap, CreditCard, Box, Layers, ShieldCheck, ArrowRightLeft, Clock, Cog, Cloud,
 } from 'lucide-react';
 
 const navItems = [
@@ -24,6 +24,7 @@ const navItems = [
     { to: '/security', icon: Shield, label: 'Security' },
     { to: '/waf', icon: ShieldCheck, label: 'WAF' },
     { to: '/billing', icon: CreditCard, label: 'Billing' },
+    { to: '/cloudflare', icon: Cloud, label: 'Cloudflare' },
     { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

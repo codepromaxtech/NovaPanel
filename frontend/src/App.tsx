@@ -22,6 +22,7 @@ import WAF from './pages/WAF';
 import Transfers from './pages/Transfers';
 import CronJobs from './pages/CronJobs';
 import Services from './pages/Services';
+import Cloudflare from './pages/Cloudflare';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="/security" element={<Security />} />
             <Route path="/waf" element={<WAF />} />
             <Route path="/billing" element={<Billing />} />
+            <Route path="/cloudflare" element={<Cloudflare />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/servers/:id/terminal" element={<Terminal />} />
             <Route path="/docker" element={<Docker />} />

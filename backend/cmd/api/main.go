@@ -130,6 +130,8 @@ func startServer(cfg *config.Config) {
 	systemctlHandler := handlers.NewSystemctlHandler(systemctlSvc)
 	backupMgr := services.NewBackupManager(pool)
 	backupMgrHandler := handlers.NewBackupManagerHandler(backupMgr)
+	cfService := services.NewCloudflareService(pool)
+	cfHandler := handlers.NewCloudflareHandler(cfService)
 	databaseHandler := handlers.NewDatabaseHandler(databaseService)
 	emailHandler := handlers.NewEmailHandler(emailService)
 	backupHandler := handlers.NewBackupHandler(backupService)
@@ -319,6 +321,29 @@ func startServer(cfg *config.Config) {
 				waf.POST("/whitelist/:server_id", wafHandler.AddWhitelist)
 				waf.DELETE("/whitelist/:id", wafHandler.RemoveWhitelist)
 				waf.GET("/logs/:server_id", wafHandler.ListLogs)
+			}
+
+			// Cloudflare Integration
+			cf := protected.Group("/cloudflare")
+			{
+				cf.POST("/verify", cfHandler.Verify)
+				cf.POST("/zones", cfHandler.ListZones)
+				cf.POST("/zones/get", cfHandler.GetZone)
+				cf.POST("/dns/list", cfHandler.ListDNS)
+				cf.POST("/dns/create", cfHandler.CreateDNS)
+				cf.POST("/dns/update", cfHandler.UpdateDNS)
+				cf.POST("/dns/delete", cfHandler.DeleteDNS)
+				cf.POST("/ssl/get", cfHandler.GetSSL)
+				cf.POST("/ssl/set", cfHandler.SetSSL)
+				cf.POST("/cache/purge-all", cfHandler.PurgeAll)
+				cf.POST("/cache/purge-urls", cfHandler.PurgeURLs)
+				cf.POST("/cache/ttl", cfHandler.SetCacheTTL)
+				cf.POST("/devmode", cfHandler.SetDevMode)
+				cf.POST("/security", cfHandler.SetSecurity)
+				cf.POST("/firewall/list", cfHandler.ListFirewall)
+				cf.POST("/analytics", cfHandler.Analytics)
+				cf.POST("/settings/get", cfHandler.GetSettings)
+				cf.POST("/settings/update", cfHandler.UpdateSetting)
 			}
 
 			// Cron Jobs
