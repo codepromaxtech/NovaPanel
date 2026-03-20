@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: novapanel-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-novapanel}
+      POSTGRES_USER: ${DB_USER:-novapanel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-novapanel_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-novapanel}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: novapanel-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: novapanel-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-novapanel}
+      - DB_USER=${DB_USER:-novapanel}
+      - DB_PASSWORD=${DB_PASSWORD:-novapanel_secret}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-novapanel-dev-secret-change-in-production}
+      - ENV=development
+      - SSH_USER=${SSH_USER:-erp}
+      - SSH_PASSWORD=${SSH_PASSWORD:-asdf@1234}
+      - HOST_USER=${HOST_USER:-erp}
+    volumes:
+      - /etc/nginx:/host/nginx:ro
+      - /etc/apache2:/host/apache2:ro
+      - /etc/httpd:/host/httpd:ro
+      - /etc/systemd/system:/host/systemd/system:ro
+      - /lib/systemd/system:/host/systemd/lib:ro
+      - /etc/init.d:/host/init.d:ro
+      - /home/erp/.ssh:/host/ssh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  automation:
+    build:
+      context: ./automation
+      dockerfile: Dockerfile
+    container_name: novapanel-automation
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-novapanel}
+      - DB_USER=${DB_USER:-novapanel}
+      - DB_PASSWORD=${DB_PASSWORD:-novapanel_secret}
+      - REDIS_URL=redis://redis:6379
+      - API_URL=http://api:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

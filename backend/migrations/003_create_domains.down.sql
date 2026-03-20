@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS ssl_certificates;
+DROP TABLE IF EXISTS dns_records;
+DROP TABLE IF EXISTS dns_zones;
+DROP TABLE IF EXISTS domains;

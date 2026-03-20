@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS server_metrics;
+DROP TABLE IF EXISTS servers;

@@ -1,0 +1,44 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Dependencies
+vendor/
+node_modules/
+
+# Build outputs
+dist/
+build/
+backend/frontend/
+backend/novapanel
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Logs
+*.log
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker override
+docker-compose.override.yml
