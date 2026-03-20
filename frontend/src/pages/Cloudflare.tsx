@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Cloud, Globe, Shield, Lock, Trash2, Plus, RefreshCw, Loader, X, Zap, Eye, BarChart3, Settings2 } from 'lucide-react';
+import { Cloud, Globe, Shield, Lock, Trash2, Plus, RefreshCw, Loader, X, Zap, Eye, BarChart3, Settings2, Network, Play, Square, Download } from 'lucide-react';
 import { cloudflareService } from '../services/cloudflare';
+import { serverService } from '../services/servers';
 import { useToast } from '../components/ui/ToastProvider';
 
-type Tab = 'zones' | 'dns' | 'ssl' | 'cache' | 'security' | 'analytics' | 'settings';
+type Tab = 'zones' | 'dns' | 'ssl' | 'cache' | 'security' | 'analytics' | 'settings' | 'tunnels';
 interface CFAuth { api_key: string; email?: string; }
 const TABS: { id: Tab; label: string; icon: any }[] = [
     { id: 'zones', label: 'Zones', icon: Globe },
@@ -11,6 +12,7 @@ const TABS: { id: Tab; label: string; icon: any }[] = [
     { id: 'ssl', label: 'SSL/TLS', icon: Lock },
     { id: 'cache', label: 'Cache', icon: Zap },
     { id: 'security', label: 'Security', icon: Shield },
+    { id: 'tunnels', label: 'Tunnels', icon: Network },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings2 },
 ];
@@ -49,6 +51,15 @@ export default function Cloudflare() {
     // Cache purge
     const [purgeUrls, setPurgeUrls] = useState('');
 
+    // Tunnels
+    const [tunnels, setTunnels] = useState<any[]>([]);
+    const [showCreateTunnel, setShowCreateTunnel] = useState(false);
+    const [tunnelForm, setTunnelForm] = useState({ name: '', secret: '' });
+    const [showDeployTunnel, setShowDeployTunnel] = useState<any>(null);
+    const [servers, setServers] = useState<any[]>([]);
+    const [deployServer, setDeployServer] = useState('');
+    const [tunnelOutput, setTunnelOutput] = useState('');
+
     const handleConnect = async () => {
         if (!apiKey) { toast.error('API key required'); return; }
         setLoading(true);
@@ -71,9 +82,11 @@ export default function Cloudflare() {
     const fetchSSL = async () => { if (!selectedZone) return; try { const r = await cloudflareService.getSSL(auth, selectedZone); setSSLMode(r.result?.value || ''); } catch { } };
     const fetchAnalytics = async () => { if (!selectedZone) return; setLoading(true); try { const r = await cloudflareService.analytics(auth, selectedZone); setAnalyticsData(r.result || null); } catch { } setLoading(false); };
     const fetchSettings = async () => { if (!selectedZone) return; setLoading(true); try { const r = await cloudflareService.getSettings(auth, selectedZone); setSettings(r); } catch { } setLoading(false); };
+    const fetchTunnels = async () => { setLoading(true); try { const r = await cloudflareService.listTunnels(auth); setTunnels(r.result || []); } catch { } setLoading(false); };
 
     useEffect(() => { if (apiKey && localStorage.getItem('cf_api_key')) handleConnect(); }, []);
     useEffect(() => { if (connected && selectedZone) { fetchDNS(); fetchSSL(); } }, [selectedZone]);
+    useEffect(() => { serverService.list(1, 100).then(r => setServers(r.data || [])).catch(() => { }); }, []);
 
     const selectZone = (z: any) => { setSelectedZone(z.id); setSelectedZoneName(z.name); setTab('dns'); };
 
@@ -89,6 +102,35 @@ export default function Cloudflare() {
     const handlePurgeUrls = async () => { const urls = purgeUrls.split('\n').filter(u => u.trim()); if (!urls.length) return; try { await cloudflareService.purgeURLs(auth, selectedZone, urls); toast.success('URLs purged'); setPurgeUrls(''); } catch { toast.error('Failed'); } };
     const handleSetSecurity = async (level: string) => { try { await cloudflareService.setSecurity(auth, selectedZone, level); setSecurityLevel(level); toast.success(`Security: ${level}`); } catch { toast.error('Failed'); } };
     const handleUpdateSetting = async (setting: string, value: string) => { try { await cloudflareService.updateSetting(auth, selectedZone, setting, value); toast.success('Updated'); fetchSettings(); } catch { toast.error('Failed'); } };
+
+    // Tunnel actions
+    const handleCreateTunnel = async () => {
+        if (!tunnelForm.name) { toast.error('Name required'); return; }
+        const secret = tunnelForm.secret || btoa(crypto.getRandomValues(new Uint8Array(32)).reduce((a, b) => a + String.fromCharCode(b), ''));
+        try { await cloudflareService.createTunnel(auth, tunnelForm.name, secret); toast.success('Tunnel created'); setShowCreateTunnel(false); setTunnelForm({ name: '', secret: '' }); fetchTunnels(); } catch { toast.error('Failed'); }
+    };
+    const handleDeleteTunnel = async (id: string) => { if (!confirm('Delete this tunnel?')) return; try { await cloudflareService.deleteTunnel(auth, id); toast.success('Deleted'); fetchTunnels(); } catch { toast.error('Failed'); } };
+    const handleDeployTunnel = async (tunnel: any) => {
+        if (!deployServer) { toast.error('Select server'); return; }
+        setTunnelOutput('Getting token and deploying...\n');
+        try {
+            const tokenR = await cloudflareService.getTunnelToken(auth, tunnel.id);
+            const token = tokenR.result;
+            if (!token) { toast.error('Failed to get tunnel token'); return; }
+            const r = await cloudflareService.runTunnel(deployServer, token, tunnel.name);
+            setTunnelOutput(r.output || 'Deployed');
+            toast.success('Tunnel deployed on server!');
+        } catch { toast.error('Deploy failed'); }
+    };
+    const handleStopTunnel = async (tunnelName: string) => {
+        if (!deployServer) { toast.error('Select server'); return; }
+        try { const r = await cloudflareService.stopTunnel(deployServer, tunnelName); setTunnelOutput(r.output || 'Stopped'); toast.success('Stopped'); } catch { toast.error('Failed'); }
+    };
+    const handleInstallCloudflared = async () => {
+        if (!deployServer) { toast.error('Select server'); return; }
+        setTunnelOutput('Installing cloudflared...\n');
+        try { const r = await cloudflareService.installCloudflared(deployServer); setTunnelOutput(r.output || 'Installed'); toast.success('cloudflared installed'); } catch { toast.error('Failed'); }
+    };
 
     const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-orange-500/50 text-sm";
     const btnPrimary = "px-6 py-2.5 rounded-lg bg-gradient-to-r from-orange-600 to-orange-700 text-white text-sm font-medium hover:from-orange-500 hover:to-orange-600 transition-all shadow-lg shadow-orange-500/20";
@@ -133,12 +175,15 @@ export default function Cloudflare() {
             {selectedZone && (<div className="flex gap-1 bg-surface-800/50 border border-surface-700/50 rounded-xl p-1 flex-wrap">
                 <button onClick={() => { setSelectedZone(''); setTab('zones'); }} className="px-3 py-2 rounded-lg text-xs text-surface-200/50 hover:text-white">← All Zones</button>
                 {TABS.filter(t => t.id !== 'zones').map(t => (
-                    <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'analytics') fetchAnalytics(); if (t.id === 'settings') fetchSettings(); }}
+                    <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'analytics') fetchAnalytics(); if (t.id === 'settings') fetchSettings(); if (t.id === 'tunnels') fetchTunnels(); }}
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${tab === t.id ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-surface-200/50 hover:text-white border border-transparent'}`}>
                         <t.icon className="w-3.5 h-3.5" /> {t.label}
                     </button>
                 ))}
             </div>)}
+            {!selectedZone && connected && (
+                <div className="flex gap-2"><button onClick={() => { setTab('tunnels'); fetchTunnels(); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${tab === 'tunnels' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-surface-800/50 text-surface-200/50 border border-surface-700/50'}`}><Network className="w-4 h-4" /> Tunnels</button></div>
+            )}
 
             {loading && <div className="flex justify-center py-8"><Loader className="w-6 h-6 animate-spin text-orange-400" /></div>}
 
@@ -266,6 +311,61 @@ export default function Cloudflare() {
                         <div className="flex justify-end gap-3 mt-4">
                             <button onClick={() => setShowAddDNS(false)} className="px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 text-sm">Cancel</button>
                             <button onClick={handleAddDNS} className={btnPrimary}>Add Record</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ════ TUNNELS ════ */}
+            {tab === 'tunnels' && !loading && (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2"><Network className="w-5 h-5 text-orange-400" /> Cloudflare Tunnels</h2>
+                        <div className="flex gap-2">
+                            <button onClick={fetchTunnels} className="p-2 rounded-lg bg-surface-700/50 hover:bg-surface-700 text-white"><RefreshCw className="w-4 h-4" /></button>
+                            <button onClick={() => setShowCreateTunnel(true)} className={btnPrimary + " flex items-center gap-2 text-xs !px-4 !py-2"}><Plus className="w-3.5 h-3.5" /> New Tunnel</button>
+                        </div>
+                    </div>
+                    <div className="flex gap-3 items-end">
+                        <div className="flex-1"><label className="block text-xs text-surface-200/40 mb-1">Deploy Target Server</label><select value={deployServer} onChange={e => setDeployServer(e.target.value)} className={inputCls + " bg-transparent"}><option value="">Select server</option>{servers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.ip_address})</option>)}</select></div>
+                        <button onClick={handleInstallCloudflared} disabled={!deployServer} className="px-3 py-2.5 rounded-lg bg-surface-700/50 text-surface-200/60 text-xs hover:bg-surface-700"><Download className="w-4 h-4 inline mr-1" />Install cloudflared</button>
+                    </div>
+                    <div className="space-y-2">{tunnels.map((t: any) => (
+                        <div key={t.id} className="group bg-surface-800/50 border border-surface-700/50 rounded-xl p-4 hover:border-surface-700 transition-colors">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Network className="w-4 h-4 text-orange-400" />
+                                    <div>
+                                        <p className="text-white font-semibold text-sm">{t.name}</p>
+                                        <p className="text-xs text-surface-200/30">{t.id}</p>
+                                    </div>
+                                    <span className={`px-2 py-0.5 text-xs rounded-full ${t.status === 'healthy' || t.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : t.status === 'inactive' ? 'bg-surface-700/50 text-surface-200/40' : 'bg-amber-500/20 text-amber-400'}`}>{t.status || 'created'}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => handleDeployTunnel(t)} disabled={!deployServer} className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs border border-emerald-500/30 hover:bg-emerald-500/30" title="Deploy to server"><Play className="w-3 h-3 inline mr-1" />Deploy</button>
+                                    <button onClick={() => handleStopTunnel(t.name)} disabled={!deployServer} className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-xs border border-red-500/30" title="Stop on server"><Square className="w-3 h-3 inline mr-1" />Stop</button>
+                                    <button onClick={() => handleDeleteTunnel(t.id)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/30 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
+                                </div>
+                            </div>
+                            {t.connections && t.connections.length > 0 && <p className="text-xs text-surface-200/40 mt-2">{t.connections.length} active connection(s)</p>}
+                        </div>
+                    ))}{tunnels.length === 0 && <p className="text-center text-surface-200/30 py-8">No tunnels found. Create one to get started.</p>}</div>
+                    {tunnelOutput && <pre className="bg-surface-900 rounded-xl p-4 text-xs text-surface-200/60 whitespace-pre-wrap font-mono max-h-48 overflow-auto border border-surface-700/30">{tunnelOutput}</pre>}
+                </div>
+            )}
+
+            {/* ════ CREATE TUNNEL MODAL ════ */}
+            {showCreateTunnel && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateTunnel(false)}>
+                    <div className="bg-surface-800 border border-surface-700/50 rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Network className="w-5 h-5 text-orange-400" /> Create Tunnel</h2>
+                        <div className="space-y-3">
+                            <input value={tunnelForm.name} onChange={e => setTunnelForm({ ...tunnelForm, name: e.target.value })} placeholder="Tunnel name" className={inputCls} />
+                            <p className="text-xs text-surface-200/30">A random secret will be generated automatically</p>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-4">
+                            <button onClick={() => setShowCreateTunnel(false)} className="px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 text-sm">Cancel</button>
+                            <button onClick={handleCreateTunnel} className={btnPrimary}>Create</button>
                         </div>
                     </div>
                 </div>

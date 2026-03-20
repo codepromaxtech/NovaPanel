@@ -250,3 +250,141 @@ func (h *CloudflareHandler) UpdateSetting(c *gin.Context) {
 		}
 	})
 }
+
+// ──── Tunnel Endpoints ────
+
+// POST /cloudflare/tunnels/list
+func (h *CloudflareHandler) ListTunnels(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.ListTunnels(c.Request.Context(), auth.APIKey, auth.Email)
+	})
+}
+
+// POST /cloudflare/tunnels/create
+func (h *CloudflareHandler) CreateTunnel(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.CreateTunnel(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "name"), getString(body, "tunnel_secret"))
+	})
+}
+
+// POST /cloudflare/tunnels/delete
+func (h *CloudflareHandler) DeleteTunnel(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.DeleteTunnel(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+	})
+}
+
+// POST /cloudflare/tunnels/get
+func (h *CloudflareHandler) GetTunnel(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.GetTunnel(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+	})
+}
+
+// POST /cloudflare/tunnels/config
+func (h *CloudflareHandler) GetTunnelConfig(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.GetTunnelConfig(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+	})
+}
+
+// POST /cloudflare/tunnels/config/update
+func (h *CloudflareHandler) UpdateTunnelConfig(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		config, _ := body["config"].(map[string]interface{})
+		return h.svc.UpdateTunnelConfig(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"), config)
+	})
+}
+
+// POST /cloudflare/tunnels/token
+func (h *CloudflareHandler) GetTunnelToken(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.GetTunnelToken(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+	})
+}
+
+// POST /cloudflare/tunnels/connections
+func (h *CloudflareHandler) ListTunnelConnections(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.ListTunnelConnections(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+	})
+}
+
+// POST /cloudflare/tunnels/dns-route
+func (h *CloudflareHandler) CreateTunnelDNSRoute(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.CreateTunnelDNSRoute(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "zone_id"), getString(body, "hostname"), getString(body, "tunnel_id"))
+	})
+}
+
+// POST /cloudflare/tunnels/install
+func (h *CloudflareHandler) InstallCloudflared(c *gin.Context) {
+	var req struct {
+		ServerID string `json:"server_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	output, err := h.svc.InstallCloudflared(c.Request.Context(), req.ServerID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"output": output, "message": "cloudflared installed"})
+}
+
+// POST /cloudflare/tunnels/run
+func (h *CloudflareHandler) RunTunnel(c *gin.Context) {
+	var req struct {
+		ServerID    string `json:"server_id" binding:"required"`
+		TunnelToken string `json:"tunnel_token" binding:"required"`
+		TunnelName  string `json:"tunnel_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	output, err := h.svc.RunTunnel(c.Request.Context(), req.ServerID, req.TunnelToken, req.TunnelName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"output": output, "message": "Tunnel started"})
+}
+
+// POST /cloudflare/tunnels/stop
+func (h *CloudflareHandler) StopTunnel(c *gin.Context) {
+	var req struct {
+		ServerID   string `json:"server_id" binding:"required"`
+		TunnelName string `json:"tunnel_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	output, err := h.svc.StopTunnel(c.Request.Context(), req.ServerID, req.TunnelName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"output": output, "message": "Tunnel stopped"})
+}
+
+// POST /cloudflare/tunnels/status
+func (h *CloudflareHandler) TunnelStatus(c *gin.Context) {
+	var req struct {
+		ServerID   string `json:"server_id" binding:"required"`
+		TunnelName string `json:"tunnel_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	output, err := h.svc.TunnelStatus(c.Request.Context(), req.ServerID, req.TunnelName)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"output": output})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"output": output})
+}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/novapanel/novapanel/internal/provisioner"
 )
 
 // CloudflareService handles Cloudflare API v4 integration
@@ -235,4 +236,222 @@ func (s *CloudflareService) GetRocketLoader(ctx context.Context, apiKey, email, 
 // SetRocketLoader sets Rocket Loader
 func (s *CloudflareService) SetRocketLoader(ctx context.Context, apiKey, email, zoneID, value string) (map[string]interface{}, error) {
 	return s.cfRequest(ctx, "PATCH", fmt.Sprintf("/zones/%s/settings/rocket_loader", zoneID), apiKey, email, map[string]string{"value": value})
+}
+
+// ──── Cloudflare Tunnels ────
+
+func (s *CloudflareService) getAccountID(ctx context.Context, apiKey, email string) (string, error) {
+	r, err := s.cfRequest(ctx, "GET", "/accounts?page=1&per_page=5", apiKey, email, nil)
+	if err != nil {
+		return "", err
+	}
+	if results, ok := r["result"].([]interface{}); ok && len(results) > 0 {
+		if acc, ok := results[0].(map[string]interface{}); ok {
+			if id, ok := acc["id"].(string); ok {
+				return id, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no account found")
+}
+
+func (s *CloudflareService) getServer(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
+	var server provisioner.ServerInfo
+	var port int
+	err := s.pool.QueryRow(ctx,
+		`SELECT ip_address, port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		 FROM servers WHERE id = $1`, serverID,
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	server.Port = port
+	return server, err
+}
+
+// ListTunnels lists all CF tunnels in the account
+func (s *CloudflareService) ListTunnels(ctx context.Context, apiKey, email string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email)
+	if err != nil {
+		return nil, err
+	}
+	return s.cfRequest(ctx, "GET", fmt.Sprintf("/accounts/%s/cfd_tunnel?is_deleted=false", accID), apiKey, email, nil)
+}
+
+// CreateTunnel creates a new Cloudflare Tunnel
+func (s *CloudflareService) CreateTunnel(ctx context.Context, apiKey, email, name, tunnelSecret string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email)
+	if err != nil {
+		return nil, err
+	}
+	body := map[string]interface{}{
+		"name":          name,
+		"tunnel_secret": tunnelSecret,
+	}
+	return s.cfRequest(ctx, "POST", fmt.Sprintf("/accounts/%s/cfd_tunnel", accID), apiKey, email, body)
+}
+
+// DeleteTunnel deletes a tunnel
+func (s *CloudflareService) DeleteTunnel(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email)
+	if err != nil {
+		return nil, err
+	}
+	return s.cfRequest(ctx, "DELETE", fmt.Sprintf("/accounts/%s/cfd_tunnel/%s", accID, tunnelID), apiKey, email, nil)
+}
+
+// GetTunnel gets tunnel details
+func (s *CloudflareService) GetTunnel(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email)
+	if err != nil {
+		return nil, err
+	}
+	return s.cfRequest(ctx, "GET", fmt.Sprintf("/accounts/%s/cfd_tunnel/%s", accID, tunnelID), apiKey, email, nil)
+}
+
+// GetTunnelToken gets the token for running cloudflared with this tunnel
+func (s *CloudflareService) GetTunnelToken(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email)
+	if err != nil {
+		return nil, err
+	}
+	return s.cfRequest(ctx, "GET", fmt.Sprintf("/accounts/%s/cfd_tunnel/%s/token", accID, tunnelID), apiKey, email, nil)
+}
+
+// ListTunnelConnections lists active connections for a tunnel
+func (s *CloudflareService) ListTunnelConnections(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email)
+	if err != nil {
+		return nil, err
+	}
+	return s.cfRequest(ctx, "GET", fmt.Sprintf("/accounts/%s/cfd_tunnel/%s/connections", accID, tunnelID), apiKey, email, nil)
+}
+
+// UpdateTunnelConfig updates ingress rules for a tunnel
+func (s *CloudflareService) UpdateTunnelConfig(ctx context.Context, apiKey, email, tunnelID string, config map[string]interface{}) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email)
+	if err != nil {
+		return nil, err
+	}
+	return s.cfRequest(ctx, "PUT", fmt.Sprintf("/accounts/%s/cfd_tunnel/%s/configurations", accID, tunnelID), apiKey, email, config)
+}
+
+// GetTunnelConfig gets the current config for a tunnel
+func (s *CloudflareService) GetTunnelConfig(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email)
+	if err != nil {
+		return nil, err
+	}
+	return s.cfRequest(ctx, "GET", fmt.Sprintf("/accounts/%s/cfd_tunnel/%s/configurations", accID, tunnelID), apiKey, email, nil)
+}
+
+// CreateTunnelDNSRoute creates a CNAME DNS record pointing to the tunnel
+func (s *CloudflareService) CreateTunnelDNSRoute(ctx context.Context, apiKey, email, zoneID, hostname, tunnelID string) (map[string]interface{}, error) {
+	record := map[string]interface{}{
+		"type":    "CNAME",
+		"name":    hostname,
+		"content": tunnelID + ".cfargotunnel.com",
+		"ttl":     1,
+		"proxied": true,
+	}
+	return s.cfRequest(ctx, "POST", fmt.Sprintf("/zones/%s/dns_records", zoneID), apiKey, email, record)
+}
+
+// ──── SSH-based cloudflared management ────
+
+// InstallCloudflared installs cloudflared on a remote server via SSH
+func (s *CloudflareService) InstallCloudflared(ctx context.Context, serverID string) (string, error) {
+	server, err := s.getServer(ctx, serverID)
+	if err != nil {
+		return "", err
+	}
+	script := `#!/bin/bash
+set -e
+if command -v cloudflared &>/dev/null; then
+    echo "cloudflared already installed: $(cloudflared --version)"
+    exit 0
+fi
+echo "Installing cloudflared..."
+# Detect arch
+ARCH=$(uname -m)
+case $ARCH in
+    x86_64)  CF_ARCH="amd64" ;;
+    aarch64) CF_ARCH="arm64" ;;
+    armv7l)  CF_ARCH="arm" ;;
+    *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
+esac
+# Download and install
+curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CF_ARCH}.deb" -o /tmp/cloudflared.deb 2>/dev/null && dpkg -i /tmp/cloudflared.deb 2>/dev/null && rm /tmp/cloudflared.deb || {
+    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CF_ARCH}" -o /usr/local/bin/cloudflared
+    chmod +x /usr/local/bin/cloudflared
+}
+echo "Installed: $(cloudflared --version)"
+`
+	return provisioner.RunScript(server, script)
+}
+
+// RunTunnel starts a cloudflared tunnel on a remote server as a systemd service
+func (s *CloudflareService) RunTunnel(ctx context.Context, serverID, tunnelToken, tunnelName string) (string, error) {
+	server, err := s.getServer(ctx, serverID)
+	if err != nil {
+		return "", err
+	}
+	script := fmt.Sprintf(`#!/bin/bash
+set -e
+# Install cloudflared if needed
+if ! command -v cloudflared &>/dev/null; then
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64) CF_ARCH="amd64" ;; aarch64) CF_ARCH="arm64" ;; *) CF_ARCH="amd64" ;;
+    esac
+    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CF_ARCH}" -o /usr/local/bin/cloudflared
+    chmod +x /usr/local/bin/cloudflared
+fi
+
+# Create systemd service
+cat > /etc/systemd/system/cloudflared-%s.service << 'UNIT'
+[Unit]
+Description=Cloudflare Tunnel %s
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token %s
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable cloudflared-%s.service
+systemctl restart cloudflared-%s.service
+sleep 2
+systemctl status cloudflared-%s.service --no-pager 2>&1 || true
+echo "Tunnel %s is running"
+`, tunnelName, tunnelName, tunnelToken, tunnelName, tunnelName, tunnelName, tunnelName)
+	return provisioner.RunScript(server, script)
+}
+
+// StopTunnel stops a cloudflared tunnel on a remote server
+func (s *CloudflareService) StopTunnel(ctx context.Context, serverID, tunnelName string) (string, error) {
+	server, err := s.getServer(ctx, serverID)
+	if err != nil {
+		return "", err
+	}
+	script := fmt.Sprintf(`systemctl stop cloudflared-%s.service 2>&1
+systemctl disable cloudflared-%s.service 2>&1
+rm -f /etc/systemd/system/cloudflared-%s.service
+systemctl daemon-reload
+echo "Tunnel %s stopped and removed"`, tunnelName, tunnelName, tunnelName, tunnelName)
+	return provisioner.RunScript(server, script)
+}
+
+// TunnelStatus checks cloudflared tunnel status on a server
+func (s *CloudflareService) TunnelStatus(ctx context.Context, serverID, tunnelName string) (string, error) {
+	server, err := s.getServer(ctx, serverID)
+	if err != nil {
+		return "", err
+	}
+	script := fmt.Sprintf(`systemctl status cloudflared-%s.service --no-pager 2>&1 || echo "Tunnel not running"`, tunnelName)
+	return provisioner.RunScript(server, script)
 }

@@ -344,6 +344,20 @@ func startServer(cfg *config.Config) {
 				cf.POST("/analytics", cfHandler.Analytics)
 				cf.POST("/settings/get", cfHandler.GetSettings)
 				cf.POST("/settings/update", cfHandler.UpdateSetting)
+				// Tunnels
+				cf.POST("/tunnels/list", cfHandler.ListTunnels)
+				cf.POST("/tunnels/create", cfHandler.CreateTunnel)
+				cf.POST("/tunnels/delete", cfHandler.DeleteTunnel)
+				cf.POST("/tunnels/get", cfHandler.GetTunnel)
+				cf.POST("/tunnels/config", cfHandler.GetTunnelConfig)
+				cf.POST("/tunnels/config/update", cfHandler.UpdateTunnelConfig)
+				cf.POST("/tunnels/token", cfHandler.GetTunnelToken)
+				cf.POST("/tunnels/connections", cfHandler.ListTunnelConnections)
+				cf.POST("/tunnels/dns-route", cfHandler.CreateTunnelDNSRoute)
+				cf.POST("/tunnels/install", cfHandler.InstallCloudflared)
+				cf.POST("/tunnels/run", cfHandler.RunTunnel)
+				cf.POST("/tunnels/stop", cfHandler.StopTunnel)
+				cf.POST("/tunnels/status", cfHandler.TunnelStatus)
 			}
 
 			// Cron Jobs
