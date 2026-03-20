@@ -1,76 +1,72 @@
 # NovaPanel
 
-A modern, full-featured server management panel built with **Go** (backend) and **React + TypeScript** (frontend).
+A modern, full-featured server management panel built with **Go** (backend) and **React + TypeScript** (frontend). 
+It features a powerful **agentless SSH provisioner**, allowing you to manage unlimited remote servers without installing custom daemons.
 
-## Features
+## ✨ Core Features
 
-| Module | Capabilities |
-|--------|--------------|
-| **Servers** | Add/manage servers, SSH-based auto-provisioning with 12 module install scripts |
-| **Domains** | Domain management with DNS configuration |
-| **Databases** | MySQL, PostgreSQL, MongoDB, Redis — query runner, web tools (phpMyAdmin, Adminer, Mongo Express, Redis Commander), user management, export/import |
-| **Email** | Full email server with Postfix/Dovecot, webmail (Roundcube), DKIM/SPF/DMARC |
-| **File Manager** | Browse, edit, upload, download files on remote servers |
-| **File Transfers** | Rsync-based transfers with scheduling, bandwidth limits, dry-run, exclude patterns |
-| **Backups** | Database, site, and full server backups with restore. Supports MySQL, PostgreSQL, MongoDB |
-| **Cron Jobs** | View, add, edit, delete cron entries on any server |
-| **System Services** | Manage systemd services — start, stop, restart, enable, disable, view logs |
-| **Docker** | Container management — run, stop, remove, view logs, images, networks, volumes |
-| **Kubernetes** | Cluster management — pods, deployments, services, namespaces, cron jobs |
-| **Monitoring** | Server metrics, resource usage, alerts |
-| **Security** | Firewall rules (UFW/iptables), fail2ban, SSH hardening |
-| **WAF** | ModSecurity + OWASP CRS for Nginx/Apache |
-| **Deployments** | Git-based deployments with rollback |
-| **Billing** | Usage tracking and billing |
+| Feature | Capabilities |
+|---------|--------------|
+| **Server Management** | Add/manage servers via SSH (Key or Password). Auto-provisions environments, tracks live CPU/RAM/Disk metrics, and features a built-in web terminal. |
+| **Cloudflare Integration** | Full Cloudflare API v4 UI. Manage Zones, DNS, SSL/TLS, Caching, Security Settings, and **Cloudflare Tunnels**. Includes 1-click `cloudflared` installation and systemd deployment on remote servers. |
+| **IDE-like File Manager** | Browse, edit, upload, download, compress, and extract files on remote servers. Includes a multi-tab syntax-highlighted code editor, search/grep, and permission management. |
+| **Domains & Web Servers** | Manage domains, configure Nginx/Apache, handle DNS records, and SSL certificates. |
+| **Databases** | Deploy MySQL, PostgreSQL, MongoDB, and Redis. Features built-in query runners, DB sizes, and web tools (phpMyAdmin, Adminer, Mongo Express). |
+| **Backups & Transfers** | Rsync-based server-to-server file transfers. Full Database, Site, and Server backups with restore capabilities. |
+| **System Control** | Manage `systemd` services (start/stop/restart/enable/disable/logs) and view active Cron jobs directly from the panel. |
+| **Docker & Kubernetes** | Full container orchestration. Manage Docker containers, images, volumes, and networks. K8s cluster management (Pods, Deployments, Services, Namespaces). |
+| **Email Server** | Full email server management with Postfix/Dovecot, Roundcube webmail, DKIM/SPF/DMARC configuration, aliases, and autoresponders. |
+| **Security & WAF** | Manage Firewall rules (UFW/iptables), Fail2Ban, and SSH hardening. ModSecurity + OWASP CRS integration for Nginx/Apache. |
+| **Deployments** | Git-based CI/CD deployments with build logs and rollback support. |
 
-## Tech Stack
+## 🛠 Tech Stack
 
-- **Backend:** Go, Gin, PostgreSQL, Redis, JWT auth, SSH provisioner
-- **Frontend:** React 18, TypeScript, Vite, Lucide icons
+- **Backend:** Go, Gin framework, PostgreSQL, Redis, custom SSH provisioner (`golang.org/x/crypto/ssh`)
+- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Lucide icons
 - **Infrastructure:** Docker, Docker Compose, Nginx reverse proxy
 
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
-# Clone
+# Clone the repository
 git clone git@github.com:codepromaxtech/NovaPanel.git
 cd NovaPanel
 
-# Configure
+# Configure environment
 cp .env.example .env
-# Edit .env with your database and Redis credentials
+# Edit .env with your PostgreSQL and Redis credentials
 
-# Start with Docker
+# Start with Docker Compose
 docker compose up -d
 
-# Or develop locally
+# Or develop locally (requires Postgres & Redis running)
 cd backend && go run cmd/api/main.go
 cd frontend && npm install && npm run dev
 ```
 
-## Project Structure
+## 📂 Project Structure
 
 ```
 NovaPanel/
 ├── backend/
-│   ├── cmd/api/main.go          # Entry point
+│   ├── cmd/api/main.go          # Main entry point & API Router
 │   ├── internal/
-│   │   ├── handlers/            # HTTP handlers (API endpoints)
-│   │   ├── services/            # Business logic
-│   │   ├── models/              # Data models & DTOs
-│   │   ├── middleware/           # Auth, CORS, rate limiting
-│   │   └── provisioner/         # SSH provisioner & install scripts
-│   └── migrations/              # PostgreSQL migrations
+│   │   ├── handlers/            # HTTP endpoint handlers
+│   │   ├── services/            # Core business logic
+│   │   ├── models/              # Database models & JSON DTOs
+│   │   ├── middleware/          # Auth, CORS, rate limiting
+│   │   └── provisioner/         # SSH command execution & install scripts
+│   └── migrations/              # PostgreSQL schema migrations
 ├── frontend/
 │   └── src/
-│       ├── pages/               # Page components
-│       ├── services/            # API service layer
-│       ├── components/          # Reusable UI components
-│       └── store/               # State management
-├── docker-compose.yml
-└── Dockerfile
+│       ├── pages/               # React page components
+│       ├── services/            # Axios API wrappers
+│       ├── components/          # Reusable UI elements & layouts
+│       └── store/               # Zustand state management
+├── docker-compose.yml           # Production deployment stack
+└── Dockerfile                   # Multi-stage Docker build
 ```
 
-## License
+## 📄 License
 
 MIT
