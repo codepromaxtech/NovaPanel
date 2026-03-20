@@ -39,6 +39,11 @@ cp .env.example .env
 # Start with Docker Compose
 docker compose up -d
 
+# Initial Setup
+1. Open http://localhost:8080 in your browser (development port) or your domain in production.
+2. The **first user you register** via the `/login` or `/register` screen will have access to the panel.
+3. Use the default `.env.example` settings when running the stack for the first time.
+
 # Or develop locally (requires Postgres & Redis running)
 cd backend && go run cmd/api/main.go
 cd frontend && npm install && npm run dev
