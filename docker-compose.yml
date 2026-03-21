@@ -1,4 +1,6 @@
-version: '3.8'
+# NovaPanel Docker Compose
+# Only the API (port 8080) is exposed externally.
+# Postgres, Redis, and Automation communicate internally only.
 
 services:
   postgres:
@@ -9,8 +11,8 @@ services:
       POSTGRES_DB: ${DB_NAME:-novapanel}
       POSTGRES_USER: ${DB_USER:-novapanel}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-novapanel_secret}
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,8 +25,8 @@ services:
     image: redis:7-alpine
     container_name: novapanel-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -74,8 +76,8 @@ services:
       dockerfile: Dockerfile
     container_name: novapanel-automation
     restart: unless-stopped
-    ports:
-      - "8001:8001"
+    expose:
+      - "8001"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
