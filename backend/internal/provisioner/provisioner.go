@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -64,14 +65,25 @@ func runSSH(server ServerInfo, script string, useSudo bool) (string, error) {
 	session.Stdout = &stdout
 	session.Stderr = &stderr
 
-	// Wrap in bash with error handling
+	// Build the inner script with error handling
+	innerScript := fmt.Sprintf("set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s", script)
+
 	var wrappedScript string
 	if useSudo {
-		// Use sudo -n (non-interactive) with bash -c to run the entire script as root
-		// This requires the user to have NOPASSWD sudo configured (standard for cloud VMs)
-		wrappedScript = fmt.Sprintf("sudo -n bash -c 'set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s'", script)
+		// Escape single quotes in the script to safely embed in bash -c '...'
+		escapedScript := strings.ReplaceAll(innerScript, "'", "'\"'\"'")
+
+		if server.SSHPassword != "" {
+			// Use sudo -S to read password from stdin (pipe it via echo)
+			// Escape single quotes in password too
+			escapedPass := strings.ReplaceAll(server.SSHPassword, "'", "'\"'\"'")
+			wrappedScript = fmt.Sprintf("echo '%s' | sudo -S bash -c '%s'", escapedPass, escapedScript)
+		} else {
+			// No password available — try passwordless sudo (NOPASSWD in sudoers)
+			wrappedScript = fmt.Sprintf("sudo -n bash -c '%s'", escapedScript)
+		}
 	} else {
-		wrappedScript = fmt.Sprintf("set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s", script)
+		wrappedScript = innerScript
 	}
 
 	if err := session.Run(wrappedScript); err != nil {

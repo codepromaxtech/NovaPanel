@@ -412,9 +412,10 @@ fi
 		return fmt.Errorf("key verification output unexpected: %s", verifyOutput)
 	}
 
-	// 5. Update database: store private key, switch auth method, clear password
+	// 5. Update database: store private key, switch auth method to key
+	// IMPORTANT: keep ssh_password — it's still needed for sudo -S on servers that require sudo password
 	_, err = s.db.Exec(ctx,
-		`UPDATE servers SET ssh_key = $1, auth_method = 'key', ssh_password = '', updated_at = $2 WHERE id = $3`,
+		`UPDATE servers SET ssh_key = $1, auth_method = 'key', updated_at = $2 WHERE id = $3`,
 		string(privPEM), time.Now(), serverID,
 	)
 	if err != nil {
