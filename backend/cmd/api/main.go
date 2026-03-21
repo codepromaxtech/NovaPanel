@@ -100,6 +100,7 @@ func startServer(cfg *config.Config) {
 	emailService := services.NewEmailService(pool)
 	backupService := services.NewBackupService(pool)
 	deployService := services.NewDeployService(pool)
+	appService := services.NewAppService(pool)
 	securityService := services.NewSecurityService(pool)
 	billingService := services.NewBillingService(pool)
 	metricsService := services.NewMetricsService(pool)
@@ -138,6 +139,7 @@ func startServer(cfg *config.Config) {
 	fileManagerSvc := services.NewFileManagerService(pool)
 	fileManagerHandler := handlers.NewFileManagerHandler(fileManagerSvc)
 	deployHandler := handlers.NewDeployHandler(deployService)
+	appHandler := handlers.NewAppHandler(appService)
 	securityHandler := handlers.NewSecurityHandler(securityService)
 	billingHandler := handlers.NewBillingHandler(billingService)
 	settingsHandler := handlers.NewSettingsHandler(pool)
@@ -466,12 +468,24 @@ func startServer(cfg *config.Config) {
 				fm.POST("/grep", fileManagerHandler.Grep)
 			}
 
+			// Phase 3: Applications
+			apps := protected.Group("/apps")
+			{
+				apps.POST("", appHandler.Create)
+				apps.GET("", appHandler.List)
+				apps.GET("/:id", appHandler.GetByID)
+				apps.PUT("/:id", appHandler.Update)
+				apps.DELETE("/:id", appHandler.Delete)
+			}
+
 			// Phase 3: Deployments
 			deploys := protected.Group("/deployments")
 			{
 				deploys.POST("", deployHandler.Create)
 				deploys.GET("", deployHandler.List)
 				deploys.GET("/:id", deployHandler.GetByID)
+				deploys.POST("/:id/redeploy", deployHandler.Redeploy)
+				deploys.GET("/:id/logs", deployHandler.GetLogs)
 			}
 
 			// Phase 3: Security

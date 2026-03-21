@@ -13,4 +13,12 @@ export const deployService = {
         const { data } = await api.get(`/deployments/${id}`);
         return data;
     },
+    async redeploy(id: string) {
+        const { data } = await api.post(`/deployments/${id}/redeploy`);
+        return data;
+    },
+    async getLogs(id: string): Promise<{ logs: string; status: string }> {
+        const { data } = await api.get(`/deployments/${id}/logs`);
+        return data;
+    },
 };

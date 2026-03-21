@@ -197,6 +197,31 @@ type FileContentResponse struct {
 
 // Phase 3 DTOs
 
+type CreateAppRequest struct {
+	Name         string            `json:"name" binding:"required"`
+	ServerID     string            `json:"server_id" binding:"required"`
+	AppType      string            `json:"app_type"`    // web, api, worker, static
+	Runtime      string            `json:"runtime"`     // node, go, python, php, static
+	DeployMethod string            `json:"deploy_method"` // git, upload, docker
+	GitRepo      string            `json:"git_repo"`
+	GitBranch    string            `json:"git_branch"`
+	DomainID     string            `json:"domain_id"`
+	EnvVars      map[string]string `json:"env_vars"`
+}
+
+type UpdateAppRequest struct {
+	Name         string            `json:"name"`
+	ServerID     string            `json:"server_id"`
+	AppType      string            `json:"app_type"`
+	Runtime      string            `json:"runtime"`
+	DeployMethod string            `json:"deploy_method"`
+	GitRepo      string            `json:"git_repo"`
+	GitBranch    string            `json:"git_branch"`
+	DomainID     string            `json:"domain_id"`
+	EnvVars      map[string]string `json:"env_vars"`
+	Status       string            `json:"status"`
+}
+
 type CreateDeploymentRequest struct {
 	AppID  string `json:"app_id" binding:"required"`
 	Branch string `json:"branch"`
