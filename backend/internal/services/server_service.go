@@ -207,7 +207,7 @@ func (s *ServerService) TestConnection(ctx context.Context, req models.TestConne
 		AuthMethod:  authMethod,
 	}
 
-	output, err := provisioner.RunScript(server, "hostname && echo '---' && uname -a && echo '---' && uptime")
+	output, err := provisioner.RunScriptAsUser(server, "hostname && echo '---' && uname -a && echo '---' && uptime")
 	if err != nil {
 		return "", fmt.Errorf("SSH connection failed: %w", err)
 	}
@@ -390,7 +390,7 @@ else
 fi
 `, pubKeyStr)
 
-	output, err := provisioner.RunScript(server, deployScript)
+	output, err := provisioner.RunScriptAsUser(server, deployScript)
 	if err != nil {
 		return fmt.Errorf("failed to deploy public key: %w (output: %s)", err, output)
 	}
@@ -404,7 +404,7 @@ fi
 		SSHKey:     string(privPEM),
 		AuthMethod: "key",
 	}
-	verifyOutput, err := provisioner.RunScript(keyServer, "echo 'key-auth-ok'")
+	verifyOutput, err := provisioner.RunScriptAsUser(keyServer, "echo 'key-auth-ok'")
 	if err != nil {
 		return fmt.Errorf("key verification failed (key deployed but cannot connect): %w", err)
 	}

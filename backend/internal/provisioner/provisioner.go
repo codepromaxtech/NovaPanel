@@ -28,8 +28,20 @@ type Result struct {
 	Duration  string `json:"duration"`
 }
 
-// RunScript SSHes into the server and runs a shell script, returning output
+// RunScript SSHes into the server and runs a shell script, returning output.
+// Automatically wraps the script with sudo when the SSH user is not root.
 func RunScript(server ServerInfo, script string) (string, error) {
+	needsSudo := server.SSHUser != "" && server.SSHUser != "root"
+	return runSSH(server, script, needsSudo)
+}
+
+// RunScriptAsUser SSHes into the server and runs a script as the logged-in user
+// (no sudo). Use this for user-level operations like ~/.ssh/authorized_keys setup.
+func RunScriptAsUser(server ServerInfo, script string) (string, error) {
+	return runSSH(server, script, false)
+}
+
+func runSSH(server ServerInfo, script string, useSudo bool) (string, error) {
 	config, err := buildSSHConfig(server)
 	if err != nil {
 		return "", fmt.Errorf("ssh config error: %w", err)
@@ -53,7 +65,14 @@ func RunScript(server ServerInfo, script string) (string, error) {
 	session.Stderr = &stderr
 
 	// Wrap in bash with error handling
-	wrappedScript := fmt.Sprintf("set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s", script)
+	var wrappedScript string
+	if useSudo {
+		// Use sudo -n (non-interactive) with bash -c to run the entire script as root
+		// This requires the user to have NOPASSWD sudo configured (standard for cloud VMs)
+		wrappedScript = fmt.Sprintf("sudo -n bash -c 'set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s'", script)
+	} else {
+		wrappedScript = fmt.Sprintf("set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s", script)
+	}
 
 	if err := session.Run(wrappedScript); err != nil {
 		return stderr.String() + "\n" + stdout.String(), fmt.Errorf("script failed: %w\nstderr: %s", err, stderr.String())
