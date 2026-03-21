@@ -248,8 +248,11 @@ func startServer(cfg *config.Config) {
 				servers.GET("", serverHandler.List)
 				servers.GET("/:id", serverHandler.GetByID)
 				servers.POST("", middleware.RequireAdmin(), serverHandler.Create)
+				servers.PUT("/:id", middleware.RequireAdmin(), serverHandler.Update)
 				servers.DELETE("/:id", middleware.RequireAdmin(), serverHandler.Delete)
+				servers.POST("/test-connection", middleware.RequireAdmin(), serverHandler.TestConnection)
 				servers.POST("/:id/heartbeat", serverHandler.Heartbeat)
+				servers.GET("/:id/metrics/latest", serverHandler.LatestMetrics)
 
 				// Phase 7: Monitoring & Terminal
 				servers.GET("/:id/metrics/live", metricsHandler.LiveMetrics)

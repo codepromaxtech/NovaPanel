@@ -2,13 +2,21 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"log"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/novapanel/novapanel/internal/models"
+	"github.com/novapanel/novapanel/internal/provisioner"
+	"golang.org/x/crypto/ssh"
 )
 
 type ServerService struct {
@@ -50,6 +58,18 @@ func (s *ServerService) Create(ctx context.Context, req models.CreateServerReque
 	if err != nil {
 		return nil, err
 	}
+
+	// Auto-setup SSH key pair if created with password auth
+	if authMethod == "password" && req.SSHPassword != "" {
+		go func() {
+			if err := s.SetupSSHKey(context.Background(), server.ID.String()); err != nil {
+				log.Printf("⚠ Auto SSH key setup failed for server %s: %v", server.Name, err)
+			} else {
+				log.Printf("🔑 Auto SSH key pair deployed for server %s", server.Name)
+			}
+		}()
+	}
+
 	return server, nil
 }
 
@@ -160,5 +180,246 @@ func (s *ServerService) Delete(ctx context.Context, id string) error {
 	if result.RowsAffected() == 0 {
 		return fmt.Errorf("server not found")
 	}
+	return nil
+}
+
+// TestConnection validates SSH credentials by connecting and running hostname
+func (s *ServerService) TestConnection(ctx context.Context, req models.TestConnectionRequest) (string, error) {
+	port := 22
+	if req.Port > 0 {
+		port = req.Port
+	}
+	sshUser := "root"
+	if req.SSHUser != "" {
+		sshUser = req.SSHUser
+	}
+	authMethod := "password"
+	if req.AuthMethod != "" {
+		authMethod = req.AuthMethod
+	}
+
+	server := provisioner.ServerInfo{
+		IPAddress:   req.IPAddress,
+		Port:        port,
+		SSHUser:     sshUser,
+		SSHKey:      req.SSHKey,
+		SSHPassword: req.SSHPassword,
+		AuthMethod:  authMethod,
+	}
+
+	output, err := provisioner.RunScript(server, "hostname && echo '---' && uname -a && echo '---' && uptime")
+	if err != nil {
+		return "", fmt.Errorf("SSH connection failed: %w", err)
+	}
+	return strings.TrimSpace(output), nil
+}
+
+// Update edits an existing server. Only non-zero/non-empty fields are updated.
+func (s *ServerService) Update(ctx context.Context, id string, req models.UpdateServerRequest) (*models.Server, error) {
+	sid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid server ID")
+	}
+
+	// Build dynamic SET clause
+	setClauses := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	if req.Name != "" {
+		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argIdx))
+		args = append(args, req.Name)
+		argIdx++
+	}
+	if req.Hostname != "" {
+		setClauses = append(setClauses, fmt.Sprintf("hostname = $%d", argIdx))
+		args = append(args, req.Hostname)
+		argIdx++
+	}
+	if req.IPAddress != "" {
+		setClauses = append(setClauses, fmt.Sprintf("ip_address = $%d", argIdx))
+		args = append(args, req.IPAddress)
+		argIdx++
+	}
+	if req.Port > 0 {
+		setClauses = append(setClauses, fmt.Sprintf("port = $%d", argIdx))
+		args = append(args, req.Port)
+		argIdx++
+	}
+	if req.OS != "" {
+		setClauses = append(setClauses, fmt.Sprintf("os = $%d", argIdx))
+		args = append(args, req.OS)
+		argIdx++
+	}
+	if req.Role != "" {
+		setClauses = append(setClauses, fmt.Sprintf("role = $%d", argIdx))
+		args = append(args, req.Role)
+		argIdx++
+	}
+	if req.SSHUser != "" {
+		setClauses = append(setClauses, fmt.Sprintf("ssh_user = $%d", argIdx))
+		args = append(args, req.SSHUser)
+		argIdx++
+	}
+	if req.SSHKey != "" {
+		setClauses = append(setClauses, fmt.Sprintf("ssh_key = $%d", argIdx))
+		args = append(args, req.SSHKey)
+		argIdx++
+	}
+	if req.SSHPassword != "" {
+		setClauses = append(setClauses, fmt.Sprintf("ssh_password = $%d", argIdx))
+		args = append(args, req.SSHPassword)
+		argIdx++
+	}
+	if req.AuthMethod != "" {
+		setClauses = append(setClauses, fmt.Sprintf("auth_method = $%d", argIdx))
+		args = append(args, req.AuthMethod)
+		argIdx++
+	}
+
+	if len(setClauses) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	setClauses = append(setClauses, fmt.Sprintf("updated_at = $%d", argIdx))
+	args = append(args, time.Now())
+	argIdx++
+
+	args = append(args, sid)
+	query := fmt.Sprintf(
+		`UPDATE servers SET %s WHERE id = $%d
+		 RETURNING id, name, hostname, host(ip_address), port, os, role, status,
+		           COALESCE(agent_version, ''), COALESCE(agent_status, 'disconnected'),
+		           ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password'),
+		           created_at, updated_at`,
+		strings.Join(setClauses, ", "), argIdx,
+	)
+
+	server := &models.Server{}
+	err = s.db.QueryRow(ctx, query, args...).Scan(
+		&server.ID, &server.Name, &server.Hostname, &server.IPAddress, &server.Port,
+		&server.OS, &server.Role, &server.Status, &server.AgentVersion, &server.AgentStatus,
+		&server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod,
+		&server.CreatedAt, &server.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update server: %w", err)
+	}
+	return server, nil
+}
+
+// GetLatestMetrics returns the most recent metrics row for a server
+func (s *ServerService) GetLatestMetrics(ctx context.Context, serverID string) (*models.ServerMetrics, error) {
+	sid, err := uuid.Parse(serverID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid server ID")
+	}
+
+	m := &models.ServerMetrics{}
+	err = s.db.QueryRow(ctx,
+		`SELECT id, server_id, cpu_percent, ram_used_mb, ram_total_mb, disk_used_gb, disk_total_gb,
+		        load_avg_1, load_avg_5, load_avg_15, network_rx_bytes, network_tx_bytes, recorded_at
+		 FROM server_metrics WHERE server_id = $1 ORDER BY recorded_at DESC LIMIT 1`, sid,
+	).Scan(&m.ID, &m.ServerID, &m.CPUPercent, &m.RAMUsedMB, &m.RAMTotalMB,
+		&m.DiskUsedGB, &m.DiskTotalGB, &m.LoadAvg1, &m.LoadAvg5, &m.LoadAvg15,
+		&m.NetworkRxBytes, &m.NetworkTxBytes, &m.RecordedAt)
+	if err != nil {
+		return nil, fmt.Errorf("no metrics available")
+	}
+	return m, nil
+}
+
+// SetupSSHKey generates an RSA key pair, deploys the public key to the server
+// via the existing password connection, then updates the DB to use key-based auth.
+func (s *ServerService) SetupSSHKey(ctx context.Context, serverID string) error {
+	// 1. Fetch current server details (need password + connection info)
+	var ipAddress, sshUser, sshPassword, authMethod string
+	var port int
+	err := s.db.QueryRow(ctx,
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		 FROM servers WHERE id = $1`, serverID,
+	).Scan(&ipAddress, &port, &sshUser, &sshPassword, &authMethod)
+	if err != nil {
+		return fmt.Errorf("server not found: %w", err)
+	}
+
+	// Skip if already using key auth
+	if authMethod == "key" {
+		return nil
+	}
+	if sshPassword == "" {
+		return fmt.Errorf("no password available for initial connection")
+	}
+
+	// 2. Generate RSA-4096 key pair
+	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return fmt.Errorf("failed to generate RSA key: %w", err)
+	}
+
+	// Encode private key to PEM
+	privPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	})
+
+	// Generate public key in OpenSSH format
+	pub, err := ssh.NewPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to create SSH public key: %w", err)
+	}
+	pubKeyStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))) + " novapanel-auto"
+
+	// 3. Connect via password and deploy the public key
+	server := provisioner.ServerInfo{
+		IPAddress:   ipAddress,
+		Port:        port,
+		SSHUser:     sshUser,
+		SSHPassword: sshPassword,
+		AuthMethod:  "password",
+	}
+
+	deployScript := fmt.Sprintf(`
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+if ! grep -q "novapanel-auto" ~/.ssh/authorized_keys 2>/dev/null; then
+    echo '%s' >> ~/.ssh/authorized_keys
+    echo 'Key deployed successfully'
+else
+    echo 'NovaPanel key already exists'
+fi
+`, pubKeyStr)
+
+	output, err := provisioner.RunScript(server, deployScript)
+	if err != nil {
+		return fmt.Errorf("failed to deploy public key: %w (output: %s)", err, output)
+	}
+	log.Printf("SSH key deploy output for %s: %s", ipAddress, strings.TrimSpace(output))
+
+	// 4. Verify the key works by connecting with it
+	keyServer := provisioner.ServerInfo{
+		IPAddress:  ipAddress,
+		Port:       port,
+		SSHUser:    sshUser,
+		SSHKey:     string(privPEM),
+		AuthMethod: "key",
+	}
+	verifyOutput, err := provisioner.RunScript(keyServer, "echo 'key-auth-ok'")
+	if err != nil {
+		return fmt.Errorf("key verification failed (key deployed but cannot connect): %w", err)
+	}
+	if !strings.Contains(verifyOutput, "key-auth-ok") {
+		return fmt.Errorf("key verification output unexpected: %s", verifyOutput)
+	}
+
+	// 5. Update database: store private key, switch auth method, clear password
+	_, err = s.db.Exec(ctx,
+		`UPDATE servers SET ssh_key = $1, auth_method = 'key', ssh_password = '', updated_at = $2 WHERE id = $3`,
+		string(privPEM), time.Now(), serverID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update server auth: %w", err)
+	}
+
 	return nil
 }

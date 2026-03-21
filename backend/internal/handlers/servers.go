@@ -116,3 +116,49 @@ func (h *ServerHandler) DashboardStats(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, stats)
 }
+
+// POST /api/v1/servers/test-connection
+func (h *ServerHandler) TestConnection(c *gin.Context) {
+	var req models.TestConnectionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid request", Message: err.Error()})
+		return
+	}
+
+	output, err := h.service.TestConnection(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "output": output})
+}
+
+// PUT /api/v1/servers/:id
+func (h *ServerHandler) Update(c *gin.Context) {
+	id := c.Param("id")
+	var req models.UpdateServerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid request", Message: err.Error()})
+		return
+	}
+
+	server, err := h.service.Update(c.Request.Context(), id, req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, server)
+}
+
+// GET /api/v1/servers/:id/metrics/latest
+func (h *ServerHandler) LatestMetrics(c *gin.Context) {
+	id := c.Param("id")
+	metrics, err := h.service.GetLatestMetrics(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"available": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"available": true, "metrics": metrics})
+}

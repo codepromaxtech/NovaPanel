@@ -53,6 +53,28 @@ type CreateServerRequest struct {
 	Modules     []string `json:"modules"` // modules to auto-install
 }
 
+type UpdateServerRequest struct {
+	Name        string `json:"name"`
+	Hostname    string `json:"hostname"`
+	IPAddress   string `json:"ip_address"`
+	Port        int    `json:"port"`
+	OS          string `json:"os"`
+	Role        string `json:"role"`
+	SSHUser     string `json:"ssh_user"`
+	SSHKey      string `json:"ssh_key"`
+	SSHPassword string `json:"ssh_password"`
+	AuthMethod  string `json:"auth_method"`
+}
+
+type TestConnectionRequest struct {
+	IPAddress   string `json:"ip_address" binding:"required"`
+	Port        int    `json:"port"`
+	SSHUser     string `json:"ssh_user"`
+	SSHKey      string `json:"ssh_key"`
+	SSHPassword string `json:"ssh_password"`
+	AuthMethod  string `json:"auth_method"`
+}
+
 type CreateTaskRequest struct {
 	Type     string      `json:"type" binding:"required"`
 	Payload  interface{} `json:"payload"`

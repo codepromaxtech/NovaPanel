@@ -38,6 +38,39 @@ export const serverService = {
         return data;
     },
 
+    async testConnection(payload: {
+        ip_address: string;
+        port?: number;
+        ssh_user?: string;
+        ssh_key?: string;
+        ssh_password?: string;
+        auth_method?: string;
+    }): Promise<{ success: boolean; output: string }> {
+        const { data } = await api.post('/servers/test-connection', payload);
+        return data;
+    },
+
+    async update(id: string, payload: {
+        name?: string;
+        hostname?: string;
+        ip_address?: string;
+        port?: number;
+        os?: string;
+        role?: string;
+        ssh_user?: string;
+        ssh_key?: string;
+        ssh_password?: string;
+        auth_method?: string;
+    }): Promise<Server> {
+        const { data } = await api.put(`/servers/${id}`, payload);
+        return data;
+    },
+
+    async getLatestMetrics(id: string) {
+        const { data } = await api.get(`/servers/${id}/metrics/latest`);
+        return data;
+    },
+
     // ──── Setup / Provisioning ────
     async getSetupLogs(serverId: string) {
         const { data } = await api.get(`/servers/${serverId}/setup`);
