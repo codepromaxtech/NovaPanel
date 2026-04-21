@@ -56,16 +56,13 @@ func (h *SSHHandler) resolveSSHTarget(server *services.ServerForSSH) (string, *s
 		}
 	}
 
-	// Determine SSH user
-	sshUser := "root"
-	if envUser := os.Getenv("SSH_USER"); envUser != "" {
-		sshUser = envUser
-	} else if server.Role == "master" {
-		// For master, try common system user
-		sshUser = os.Getenv("HOST_USER")
-		if sshUser == "" {
-			sshUser = "root"
-		}
+	// Prefer SSH user from DB; fall back to env var then root
+	sshUser := server.SSHUser
+	if sshUser == "" {
+		sshUser = os.Getenv("SSH_USER")
+	}
+	if sshUser == "" {
+		sshUser = "root"
 	}
 
 	config := &ssh.ClientConfig{
@@ -76,14 +73,19 @@ func (h *SSHHandler) resolveSSHTarget(server *services.ServerForSSH) (string, *s
 
 	var authMethods []ssh.AuthMethod
 
-	// 1. Try server-specific SSH key from DB
+	// 1. DB-stored SSH key (decrypted)
 	if server.SSHKey != "" {
 		if signer, err := ssh.ParsePrivateKey([]byte(server.SSHKey)); err == nil {
 			authMethods = append(authMethods, ssh.PublicKeys(signer))
 		}
 	}
 
-	// 2. Try mounted host SSH keys
+	// 2. DB-stored password
+	if server.SSHPassword != "" {
+		authMethods = append(authMethods, ssh.Password(server.SSHPassword))
+	}
+
+	// 3. Mounted host SSH keys (fallback for local/master server)
 	keyPaths := []string{
 		"/root/.ssh/id_rsa",
 		"/root/.ssh/id_ed25519",
@@ -100,17 +102,10 @@ func (h *SSHHandler) resolveSSHTarget(server *services.ServerForSSH) (string, *s
 		}
 	}
 
-	// 3. Password fallback
+	// 4. Env var password fallback
 	if envPass := os.Getenv("SSH_PASSWORD"); envPass != "" {
 		authMethods = append(authMethods, ssh.Password(envPass))
 	}
-	// Always add keyboard-interactive as last resort
-	authMethods = append(authMethods, ssh.KeyboardInteractive(
-		func(user, instruction string, questions []string, echos []bool) ([]string, error) {
-			answers := make([]string, len(questions))
-			return answers, nil
-		},
-	))
 
 	config.Auth = authMethods
 
@@ -144,19 +139,22 @@ func getDockerGatewayIP() string {
 func (h *SSHHandler) HandleTerminal(c *gin.Context) {
 	serverID := c.Param("id")
 
-	// Look up the server
-	server, err := h.serverService.GetByID(c.Request.Context(), serverID)
+	// Look up the server with decrypted SSH credentials
+	decryptedServer, err := h.serverService.GetDecryptedSSH(c.Request.Context(), serverID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "server not found"})
 		return
 	}
 
-	// Resolve SSH target
+	// Resolve SSH target using decrypted credentials
 	sshTarget := &services.ServerForSSH{
-		IPAddress: server.IPAddress,
-		Port:      server.Port,
-		Role:      server.Role,
-		SSHKey:    server.SSHKey,
+		IPAddress:   decryptedServer.IPAddress,
+		Port:        decryptedServer.Port,
+		Role:        "worker",
+		SSHUser:     decryptedServer.SSHUser,
+		SSHKey:      decryptedServer.SSHKey,
+		SSHPassword: decryptedServer.SSHPassword,
+		AuthMethod:  decryptedServer.AuthMethod,
 	}
 	addr, sshConfig := h.resolveSSHTarget(sshTarget)
 
@@ -243,7 +241,7 @@ func (h *SSHHandler) HandleTerminal(c *gin.Context) {
 	okMsg, _ := json.Marshal(terminalMsg{Type: "output", Data: fmt.Sprintf("\x1b[32m✓ Connected to %s\x1b[0m\r\n\r\n", addr)})
 	conn.WriteMessage(ws.TextMessage, okMsg)
 
-	log.Printf("Terminal session opened for server %s (%s)", server.Name, addr)
+	log.Printf("Terminal session opened for server %s (%s)", serverID, addr)
 
 	// SSH stdout → WebSocket
 	go func() {
@@ -287,7 +285,7 @@ func (h *SSHHandler) HandleTerminal(c *gin.Context) {
 			session.Close()
 			sshClient.Close()
 			conn.Close()
-			log.Printf("Terminal session closed for server %s", server.Name)
+			log.Printf("Terminal session closed for server %s", serverID)
 		}()
 
 		for {

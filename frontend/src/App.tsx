@@ -23,6 +23,7 @@ import Transfers from './pages/Transfers';
 import CronJobs from './pages/CronJobs';
 import Services from './pages/Services';
 import Cloudflare from './pages/Cloudflare';
+import TeamManagement from './pages/TeamManagement';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -73,6 +74,7 @@ export default function App() {
             <Route path="/servers/:id/terminal" element={<Terminal />} />
             <Route path="/docker" element={<Docker />} />
             <Route path="/kubernetes" element={<Kubernetes />} />
+            <Route path="/team" element={<TeamManagement />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -32,8 +33,8 @@ func RateLimitMiddleware(rdb *redis.Client, limit int, window time.Duration) gin
 			return
 		}
 
-		c.Header("X-RateLimit-Limit", string(rune(limit)))
-		c.Header("X-RateLimit-Remaining", string(rune(limit-int(count))))
+		c.Header("X-RateLimit-Limit", strconv.Itoa(limit))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(limit-int(count)))
 		c.Next()
 	}
 }

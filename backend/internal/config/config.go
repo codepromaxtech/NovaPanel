@@ -19,6 +19,7 @@ type Config struct {
 	JWTSecret      string
 	JWTExpiry      time.Duration
 	AutomationURL  string
+	CORSOrigins    string
 }
 
 func Load() *Config {
@@ -36,6 +37,7 @@ func Load() *Config {
 		JWTSecret:     getEnv("JWT_SECRET", "novapanel-dev-secret-change-in-production"),
 		JWTExpiry:     parseDuration(getEnv("JWT_EXPIRY", "24h")),
 		AutomationURL: getEnv("AUTOMATION_URL", "http://localhost:8001"),
+		CORSOrigins:   getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"),
 	}
 }
 

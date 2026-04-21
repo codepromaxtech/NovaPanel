@@ -8,7 +8,10 @@ import {
 } from 'lucide-react';
 import { serverService } from '../services/servers';
 import { modulesService, ModuleInfo } from '../services/modules';
+import { phpService, PHPVersion } from '../services/php';
 import { useToast } from '../components/ui/ToastProvider';
+
+const PHP_VERSIONS = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
 
 const osOptions = [
     {
@@ -88,6 +91,12 @@ export default function Servers() {
 
     // Create form step (1 = details, 2 = modules)
     const [step, setStep] = useState(1);
+
+    // PHP Version Manager
+    const [phpServer, setPHPServer] = useState<string | null>(null);
+    const [phpVersions, setPHPVersions] = useState<PHPVersion[]>([]);
+    const [phpLoading, setPHPLoading] = useState(false);
+    const [phpInstalling, setPHPInstalling] = useState<string | null>(null);
 
     // SSH key file upload ref
     const keyFileRef = useRef<HTMLInputElement>(null);
@@ -243,6 +252,45 @@ export default function Servers() {
             setServerModules(prev => ({ ...prev, [modulePickerServer]: selectedModules }));
             setModulePickerServer(null);
         } catch { toast.error('Failed to update modules'); }
+    };
+
+    const openPHPManager = async (serverId: string) => {
+        setPHPServer(serverId);
+        setPHPLoading(true);
+        try {
+            const versions = await phpService.list(serverId);
+            setPHPVersions(versions);
+        } catch { setPHPVersions([]); } finally { setPHPLoading(false); }
+    };
+
+    const handleInstallPHP = async (version: string) => {
+        if (!phpServer) return;
+        setPHPInstalling(version);
+        try {
+            const pv = await phpService.install(phpServer, version);
+            setPHPVersions(prev => [...prev.filter(v => v.version !== version), pv]);
+            toast.success(`PHP ${version} installation started`);
+        } catch (err: any) {
+            toast.error(err?.response?.data?.error || `Failed to install PHP ${version}`);
+        } finally { setPHPInstalling(null); }
+    };
+
+    const handleSetDefaultPHP = async (version: string) => {
+        if (!phpServer) return;
+        try {
+            await phpService.setDefault(phpServer, version);
+            setPHPVersions(prev => prev.map(v => ({ ...v, is_default: v.version === version })));
+            toast.success(`PHP ${version} set as default`);
+        } catch { toast.error('Failed to set default'); }
+    };
+
+    const handleUninstallPHP = async (version: string) => {
+        if (!phpServer || !confirm(`Uninstall PHP ${version}?`)) return;
+        try {
+            await phpService.uninstall(phpServer, version);
+            setPHPVersions(prev => prev.filter(v => v.version !== version));
+            toast.success(`PHP ${version} uninstall started`);
+        } catch { toast.error('Failed to uninstall'); }
     };
 
     const handleKeyFileUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'create' | 'edit') => {
@@ -455,10 +503,17 @@ export default function Servers() {
                                         {server.agent_status === 'connected' ? <Wifi className="w-3.5 h-3.5 text-green-400" /> : <WifiOff className="w-3.5 h-3.5 text-red-400" />}
                                         <span>{server.os}</span>
                                     </div>
-                                    <button onClick={() => navigate(`/servers/${server.id}/terminal`)}
-                                        className="flex items-center gap-1.5 text-xs text-surface-200/30 hover:text-nova-400 transition-colors px-2 py-1 rounded-lg hover:bg-nova-500/10">
-                                        <Terminal className="w-3.5 h-3.5" /> Terminal
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => openPHPManager(server.id)}
+                                            className="flex items-center gap-1.5 text-xs text-surface-200/30 hover:text-purple-400 transition-colors px-2 py-1 rounded-lg hover:bg-purple-500/10"
+                                            title="PHP Version Manager">
+                                            🐘 PHP
+                                        </button>
+                                        <button onClick={() => navigate(`/servers/${server.id}/terminal`)}
+                                            className="flex items-center gap-1.5 text-xs text-surface-200/30 hover:text-nova-400 transition-colors px-2 py-1 rounded-lg hover:bg-nova-500/10">
+                                            <Terminal className="w-3.5 h-3.5" /> Terminal
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -711,6 +766,78 @@ export default function Servers() {
                                 <Check className="w-4 h-4" /> Save Modules
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════ PHP Version Manager Modal ═══════ */}
+            {phpServer && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setPHPServer(null)}>
+                    <div className="glass-card rounded-2xl p-6 w-full max-w-lg mx-4 animate-fade-in" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-5">
+                            <h3 className="text-lg font-semibold text-white flex items-center gap-2">🐘 PHP Version Manager</h3>
+                            <button onClick={() => setPHPServer(null)} className="text-surface-200/40 hover:text-white"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        {phpLoading ? (
+                            <div className="flex items-center justify-center py-10"><Loader className="w-5 h-5 text-nova-500 animate-spin" /></div>
+                        ) : (
+                            <div className="space-y-2">
+                                {PHP_VERSIONS.map(ver => {
+                                    const installed = phpVersions.find(v => v.version === ver);
+                                    const isInstalling = installed?.status === 'installing' || phpInstalling === ver;
+                                    return (
+                                        <div key={ver} className="flex items-center justify-between p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-mono text-sm font-semibold text-white">PHP {ver}</span>
+                                                {installed?.is_default && (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-nova-500/20 text-nova-400 font-medium">default</span>
+                                                )}
+                                                {isInstalling && (
+                                                    <span className="text-[10px] text-yellow-400 flex items-center gap-1"><Loader className="w-3 h-3 animate-spin" /> installing</span>
+                                                )}
+                                                {installed && !isInstalling && (
+                                                    <span className="text-[10px] text-green-400 flex items-center gap-1"><Check className="w-3 h-3" /> installed</span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                {!installed ? (
+                                                    <button
+                                                        onClick={() => handleInstallPHP(ver)}
+                                                        disabled={phpInstalling !== null}
+                                                        className="text-xs px-3 py-1.5 rounded-lg bg-nova-500/10 text-nova-400 hover:bg-nova-500/20 transition-colors disabled:opacity-40"
+                                                    >
+                                                        Install
+                                                    </button>
+                                                ) : (
+                                                    <>
+                                                        {!installed.is_default && (
+                                                            <button
+                                                                onClick={() => handleSetDefaultPHP(ver)}
+                                                                className="text-xs px-2 py-1.5 rounded-lg text-surface-200/40 hover:text-nova-400 hover:bg-nova-500/10 transition-colors"
+                                                            >
+                                                                Set Default
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleUninstallPHP(ver)}
+                                                            className="p-1.5 rounded-lg text-surface-200/30 hover:text-danger hover:bg-danger/10 transition-colors"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        <button onClick={() => setPHPServer(null)}
+                            className="w-full mt-5 py-2.5 rounded-xl border border-white/10 text-surface-200/60 text-sm hover:bg-white/5 transition-colors">
+                            Close
+                        </button>
                     </div>
                 </div>
             )}

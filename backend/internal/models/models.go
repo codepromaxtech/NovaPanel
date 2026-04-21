@@ -54,6 +54,7 @@ type Domain struct {
 	PHPVersion       string      `json:"php_version" db:"php_version"`
 	SSLEnabled       bool        `json:"ssl_enabled" db:"ssl_enabled"`
 	Status           string      `json:"status" db:"status"`
+	SystemUser       string      `json:"system_user" db:"system_user"`
 	IsLoadBalancer   bool        `json:"is_load_balancer" db:"is_load_balancer"`
 	BackendServerIDs []uuid.UUID `json:"backend_server_ids,omitempty" db:"-"`
 	CreatedAt        time.Time   `json:"created_at" db:"created_at"`
@@ -71,9 +72,10 @@ type Application struct {
 	DeployMethod string     `json:"deploy_method" db:"deploy_method"`
 	GitRepo      string     `json:"git_repo,omitempty" db:"git_repo"`
 	GitBranch    string     `json:"git_branch" db:"git_branch"`
-	Status       string     `json:"status" db:"status"`
-	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
+	Status        string     `json:"status" db:"status"`
+	WebhookSecret string     `json:"webhook_secret,omitempty" db:"webhook_secret"`
+	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 type Task struct {
@@ -373,4 +375,15 @@ type TransferSchedule struct {
 	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
 }
 
+// Team Management
 
+type TeamMember struct {
+	ID         uuid.UUID  `json:"id" db:"id"`
+	OwnerID    uuid.UUID  `json:"owner_id" db:"owner_id"`
+	MemberID   uuid.UUID  `json:"member_id" db:"member_id"`
+	Role       string     `json:"role" db:"role"`           // viewer, editor, manager
+	ScopeType  string     `json:"scope_type" db:"scope_type"` // all, server, domain
+	ScopeID    *uuid.UUID `json:"scope_id,omitempty" db:"scope_id"`
+	InvitedAt  time.Time  `json:"invited_at" db:"invited_at"`
+	AcceptedAt *time.Time `json:"accepted_at,omitempty" db:"accepted_at"`
+}

@@ -4,16 +4,18 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/novapanel/novapanel/internal/middleware"
 	"github.com/novapanel/novapanel/internal/models"
 	"github.com/novapanel/novapanel/internal/services"
 )
 
 type AuthHandler struct {
-	service *services.AuthService
+	service      *services.AuthService
+	loginLimiter *middleware.LoginLimiter
 }
 
-func NewAuthHandler(service *services.AuthService) *AuthHandler {
-	return &AuthHandler{service: service}
+func NewAuthHandler(service *services.AuthService, loginLimiter *middleware.LoginLimiter) *AuthHandler {
+	return &AuthHandler{service: service, loginLimiter: loginLimiter}
 }
 
 // POST /api/v1/auth/register
@@ -43,8 +45,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	resp, err := h.service.Login(c.Request.Context(), req)
 	if err != nil {
+		// Record failed login attempt for brute-force protection
+		if h.loginLimiter != nil {
+			h.loginLimiter.RecordFailure(c.ClientIP())
+		}
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: err.Error()})
 		return
+	}
+
+	// Reset failed login counter on success
+	if h.loginLimiter != nil {
+		h.loginLimiter.RecordSuccess(c.ClientIP())
 	}
 
 	c.JSON(http.StatusOK, resp)

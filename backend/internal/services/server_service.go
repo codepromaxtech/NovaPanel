@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
 	"github.com/novapanel/novapanel/internal/provisioner"
 	"golang.org/x/crypto/ssh"
@@ -46,11 +47,27 @@ func (s *ServerService) Create(ctx context.Context, req models.CreateServerReque
 	if req.AuthMethod != "" {
 		authMethod = req.AuthMethod
 	}
+
+	// Encrypt SSH credentials before storing
+	encPassword, encKey := req.SSHPassword, req.SSHKey
+	if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
+		if req.SSHPassword != "" {
+			if enc, err := novacrypto.Encrypt(req.SSHPassword, cryptoKey); err == nil {
+				encPassword = enc
+			}
+		}
+		if req.SSHKey != "" {
+			if enc, err := novacrypto.Encrypt(req.SSHKey, cryptoKey); err == nil {
+				encKey = enc
+			}
+		}
+	}
+
 	err := s.db.QueryRow(ctx,
 		`INSERT INTO servers (name, hostname, ip_address, port, os, role, status, agent_status, ssh_user, ssh_key, ssh_password, auth_method)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		 RETURNING id, name, hostname, host(ip_address), port, os, role, status, agent_version, agent_status, ssh_user, ssh_key, ssh_password, auth_method, created_at, updated_at`,
-		req.Name, req.Hostname, req.IPAddress, port, req.OS, role, "pending", "disconnected", sshUser, req.SSHKey, req.SSHPassword, authMethod,
+		req.Name, req.Hostname, req.IPAddress, port, req.OS, role, "pending", "disconnected", sshUser, encKey, encPassword, authMethod,
 	).Scan(&server.ID, &server.Name, &server.Hostname, &server.IPAddress, &server.Port,
 		&server.OS, &server.Role, &server.Status, &server.AgentVersion, &server.AgentStatus,
 		&server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod,
@@ -70,6 +87,39 @@ func (s *ServerService) Create(ctx context.Context, req models.CreateServerReque
 		}()
 	}
 
+	return server, nil
+}
+
+// GetDecryptedSSH returns decrypted SSH credentials for a server (for provisioner use)
+func (s *ServerService) GetDecryptedSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
+	var server provisioner.ServerInfo
+	var port int
+	var encKey, encPassword string
+	err := s.db.QueryRow(ctx,
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		 FROM servers WHERE id = $1`, serverID,
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
+	if err != nil {
+		return server, err
+	}
+	server.Port = port
+
+	// Decrypt credentials
+	if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
+		if encPassword != "" {
+			if dec, err := novacrypto.Decrypt(encPassword, cryptoKey); err == nil {
+				encPassword = dec
+			}
+		}
+		if encKey != "" {
+			if dec, err := novacrypto.Decrypt(encKey, cryptoKey); err == nil {
+				encKey = dec
+			}
+		}
+	}
+
+	server.SSHPassword = encPassword
+	server.SSHKey = encKey
 	return server, nil
 }
 
@@ -262,13 +312,25 @@ func (s *ServerService) Update(ctx context.Context, id string, req models.Update
 		argIdx++
 	}
 	if req.SSHKey != "" {
+		encKey := req.SSHKey
+		if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
+			if enc, err := novacrypto.Encrypt(req.SSHKey, cryptoKey); err == nil {
+				encKey = enc
+			}
+		}
 		setClauses = append(setClauses, fmt.Sprintf("ssh_key = $%d", argIdx))
-		args = append(args, req.SSHKey)
+		args = append(args, encKey)
 		argIdx++
 	}
 	if req.SSHPassword != "" {
+		encPassword := req.SSHPassword
+		if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
+			if enc, err := novacrypto.Encrypt(req.SSHPassword, cryptoKey); err == nil {
+				encPassword = enc
+			}
+		}
 		setClauses = append(setClauses, fmt.Sprintf("ssh_password = $%d", argIdx))
-		args = append(args, req.SSHPassword)
+		args = append(args, encPassword)
 		argIdx++
 	}
 	if req.AuthMethod != "" {
@@ -339,6 +401,13 @@ func (s *ServerService) SetupSSHKey(ctx context.Context, serverID string) error 
 		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
 		 FROM servers WHERE id = $1`, serverID,
 	).Scan(&ipAddress, &port, &sshUser, &sshPassword, &authMethod)
+
+	// Decrypt the password
+	if cryptoKey, keyErr := novacrypto.GetEncryptionKey(); keyErr == nil && sshPassword != "" {
+		if dec, decErr := novacrypto.Decrypt(sshPassword, cryptoKey); decErr == nil {
+			sshPassword = dec
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("server not found: %w", err)
 	}
@@ -414,9 +483,17 @@ fi
 
 	// 5. Update database: store private key, switch auth method to key
 	// IMPORTANT: keep ssh_password — it's still needed for sudo -S on servers that require sudo password
+	// Encrypt the private key before storing
+	encPEM := string(privPEM)
+	if cryptoKey, keyErr := novacrypto.GetEncryptionKey(); keyErr == nil {
+		if enc, encErr := novacrypto.Encrypt(string(privPEM), cryptoKey); encErr == nil {
+			encPEM = enc
+		}
+	}
+
 	_, err = s.db.Exec(ctx,
 		`UPDATE servers SET ssh_key = $1, auth_method = 'key', updated_at = $2 WHERE id = $3`,
-		string(privPEM), time.Now(), serverID,
+		encPEM, time.Now(), serverID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update server auth: %w", err)

@@ -42,6 +42,20 @@ func RunScriptAsUser(server ServerInfo, script string) (string, error) {
 	return runSSH(server, script, false)
 }
 
+// RunScriptAsSystemUser SSHes into the server and runs a script as a specific
+// system user (e.g., the domain owner). This provides per-domain isolation so
+// one client's operations cannot interfere with another's files or processes.
+func RunScriptAsSystemUser(server ServerInfo, systemUser string, script string) (string, error) {
+	if systemUser == "" || systemUser == "root" {
+		return RunScript(server, script)
+	}
+	// Wrap the script with sudo -u to execute as the target system user
+	wrappedScript := fmt.Sprintf("sudo -u '%s' bash -c '%s'",
+		strings.ReplaceAll(systemUser, "'", "'\"'\"'"),
+		strings.ReplaceAll(script, "'", "'\"'\"'"))
+	return runSSH(server, wrappedScript, false)
+}
+
 func runSSH(server ServerInfo, script string, useSudo bool) (string, error) {
 	config, err := buildSSHConfig(server)
 	if err != nil {

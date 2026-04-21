@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
     Globe, Plus, Search, Filter, MoreVertical, ExternalLink,
-    Shield, CheckCircle, XCircle, AlertTriangle, Trash2, Edit, Eye,
+    Shield, CheckCircle, XCircle, AlertTriangle, Trash2, Edit, Eye, Loader,
 } from 'lucide-react';
 import type { Domain, Server } from '../types';
 import { domainService } from '../services/domains';
 import { serverService } from '../services/servers';
+import { phpService } from '../services/php';
 import { useToast } from '../components/ui/ToastProvider';
+
+const PHP_VERSIONS = ['8.5', '8.4', '8.3', '8.2', '8.1', '8.0', '7.4'];
 
 export default function Domains() {
     const toast = useToast();
@@ -83,6 +86,21 @@ export default function Domains() {
         }
     };
 
+    const [switchingPHP, setSwitchingPHP] = useState<string | null>(null);
+
+    const handlePHPSwitch = async (domainId: string, version: string) => {
+        setSwitchingPHP(domainId);
+        try {
+            await phpService.switchDomain(domainId, version);
+            toast.success(`PHP switched to ${version}`);
+            loadDomains();
+        } catch (err: any) {
+            toast.error(err?.response?.data?.error || 'Failed to switch PHP version');
+        } finally {
+            setSwitchingPHP(null);
+        }
+    };
+
     const filteredDomains = domains.filter((d) =>
         d.name.toLowerCase().includes(search.toLowerCase())
     );
@@ -148,6 +166,7 @@ export default function Domains() {
                             <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Domain</th>
                             <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Type</th>
                             <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Web Server</th>
+                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">PHP</th>
                             <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">SSL</th>
                             <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Status</th>
                             <th className="text-right px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Actions</th>
@@ -160,6 +179,7 @@ export default function Domains() {
                                     <td className="px-5 py-4"><div className="h-4 skeleton rounded w-40" /></td>
                                     <td className="px-5 py-4"><div className="h-4 skeleton rounded w-20" /></td>
                                     <td className="px-5 py-4"><div className="h-4 skeleton rounded w-16" /></td>
+                                    <td className="px-5 py-4"><div className="h-4 skeleton rounded w-14" /></td>
                                     <td className="px-5 py-4"><div className="h-4 skeleton rounded w-10" /></td>
                                     <td className="px-5 py-4"><div className="h-6 skeleton rounded-full w-20" /></td>
                                     <td className="px-5 py-4"><div className="h-4 skeleton rounded w-8 ml-auto" /></td>
@@ -167,7 +187,7 @@ export default function Domains() {
                             ))
                         ) : filteredDomains.length === 0 ? (
                             <tr>
-                                <td colSpan={6} className="px-5 py-16 text-center">
+                                <td colSpan={7} className="px-5 py-16 text-center">
                                     <Globe className="w-12 h-12 text-surface-200/20 mx-auto mb-3" />
                                     <p className="text-surface-200/40 text-sm">No domains found</p>
                                 </td>
@@ -198,6 +218,25 @@ export default function Domains() {
                                     </td>
                                     <td className="px-5 py-4">
                                         <span className="text-sm text-surface-200/60 capitalize">{domain.web_server}</span>
+                                    </td>
+                                    <td className="px-5 py-4">
+                                        {domain.type === 'php' || domain.php_version ? (
+                                            <div className="flex items-center gap-1.5">
+                                                {switchingPHP === domain.id && <Loader className="w-3 h-3 text-purple-400 animate-spin" />}
+                                                <select
+                                                    value={domain.php_version || '8.2'}
+                                                    onChange={e => handlePHPSwitch(domain.id, e.target.value)}
+                                                    disabled={switchingPHP === domain.id}
+                                                    className="text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded px-1.5 py-0.5 focus:outline-none cursor-pointer disabled:opacity-50"
+                                                >
+                                                    {PHP_VERSIONS.map(v => (
+                                                        <option key={v} value={v} className="bg-surface-800 text-white">{v}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-surface-200/20">—</span>
+                                        )}
                                     </td>
                                     <td className="px-5 py-4">
                                         {domain.ssl_enabled ? (
@@ -324,10 +363,13 @@ export default function Domains() {
                                     <div className="space-y-2">
                                         <select value={newDomain.php_version} onChange={e => setNewDomain({ ...newDomain, php_version: e.target.value })}
                                             className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent">
+                                            <option value="8.5">PHP 8.5</option>
+                                            <option value="8.4">PHP 8.4</option>
                                             <option value="8.3">PHP 8.3</option>
                                             <option value="8.2">PHP 8.2</option>
                                             <option value="8.1">PHP 8.1</option>
                                             <option value="8.0">PHP 8.0</option>
+                                            <option value="7.4">PHP 7.4</option>
                                             <option value="">None (Static/Node/Python)</option>
                                         </select>
                                     </div>

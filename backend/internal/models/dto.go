@@ -206,6 +206,7 @@ type CreateAppRequest struct {
 	GitRepo      string            `json:"git_repo"`
 	GitBranch    string            `json:"git_branch"`
 	DomainID     string            `json:"domain_id"`
+	WebhookSecret string           `json:"webhook_secret"`
 	EnvVars      map[string]string `json:"env_vars"`
 }
 
@@ -218,6 +219,7 @@ type UpdateAppRequest struct {
 	GitRepo      string            `json:"git_repo"`
 	GitBranch    string            `json:"git_branch"`
 	DomainID     string            `json:"domain_id"`
+	WebhookSecret string           `json:"webhook_secret"`
 	EnvVars      map[string]string `json:"env_vars"`
 	Status       string            `json:"status"`
 }
@@ -305,4 +307,19 @@ type CreateScheduleRequest struct {
 	BandwidthLimit  int    `json:"bandwidth_limit"`
 	DeleteExtra     bool   `json:"delete_extra"`
 	CronExpression  string `json:"cron_expression" binding:"required"`
+}
+
+// Team Management DTOs
+
+type InviteTeamMemberRequest struct {
+	Email     string `json:"email" binding:"required,email"`
+	Role      string `json:"role"`       // viewer, editor, manager
+	ScopeType string `json:"scope_type"` // all, server, domain
+	ScopeID   string `json:"scope_id"`
+}
+
+type UpdateTeamMemberRequest struct {
+	Role      string `json:"role"`
+	ScopeType string `json:"scope_type"`
+	ScopeID   string `json:"scope_id"`
 }

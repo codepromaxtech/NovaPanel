@@ -57,7 +57,7 @@ export default function Deployments() {
     const [logContent, setLogContent] = useState('');
     const [logStatus, setLogStatus] = useState('');
     const logRef = useRef<HTMLPreElement>(null);
-    const pollRef = useRef<NodeJS.Timeout | null>(null);
+    const wsRef = useRef<WebSocket | null>(null);
 
     const fetchAll = async () => {
         setLoading(true);
@@ -147,36 +147,57 @@ export default function Deployments() {
     };
 
     const openLogs = (deployId: string) => {
+        if (wsRef.current) wsRef.current.close();
+
         setLogDeploy(deployId);
-        setLogContent('Loading...');
+        setLogContent('Connecting...');
         setLogStatus('pending');
 
-        // Start polling
-        const poll = async () => {
+        const token = localStorage.getItem('novapanel_token') || '';
+        const base = import.meta.env.VITE_API_URL || '';
+        const wsUrl = base.startsWith('http')
+            ? base.replace(/^http/, 'ws') + `/deployments/${deployId}/ws?token=${token}`
+            : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/v1/deployments/${deployId}/ws?token=${token}`;
+
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onmessage = (event) => {
             try {
-                const res = await deployService.getLogs(deployId);
-                setLogContent(res.logs || 'Waiting for logs...');
-                setLogStatus(res.status);
-                // Auto-scroll to bottom
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'log') {
+                    setLogContent(prev => prev === 'Connecting...' ? msg.data : prev + msg.data);
+                    setLogStatus(msg.status || 'running');
+                } else if (msg.type === 'complete') {
+                    setLogContent(msg.logs || '');
+                    setLogStatus(msg.status);
+                    fetchAll();
+                } else if (msg.type === 'error') {
+                    setLogContent(prev => prev + '\n[error] ' + msg.error);
+                }
                 setTimeout(() => {
                     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-                }, 50);
-                // Stop polling if finished
-                if (res.status === 'success' || res.status === 'failed') {
-                    if (pollRef.current) clearInterval(pollRef.current);
-                    fetchAll(); // Refresh list
-                }
-            } catch { /* ignore */ }
+                }, 30);
+            } catch { /* ignore malformed */ }
         };
 
-        poll();
-        if (pollRef.current) clearInterval(pollRef.current);
-        pollRef.current = setInterval(poll, 2000);
+        ws.onerror = () => {
+            setLogContent(prev => prev + '\n[ws] Connection error — retrying via HTTP...');
+            // Fallback: fetch logs once via HTTP
+            deployService.getLogs(deployId).then(res => {
+                setLogContent(res.logs || 'No logs available');
+                setLogStatus(res.status);
+            }).catch(() => {});
+        };
+
+        ws.onclose = () => {
+            wsRef.current = null;
+        };
     };
 
     const closeLogs = () => {
+        if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
         setLogDeploy(null);
-        if (pollRef.current) clearInterval(pollRef.current);
     };
 
     const getAppName = (appId: string) => apps.find(a => a.id === appId)?.name || appId.slice(0, 8);

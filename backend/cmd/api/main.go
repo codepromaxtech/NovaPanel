@@ -68,6 +68,16 @@ func runMigrations(cfg *config.Config) {
 }
 
 func startServer(cfg *config.Config) {
+	// Reject weak default secrets in production
+	if cfg.Env == "production" {
+		if cfg.JWTSecret == "novapanel-dev-secret-change-in-production" {
+			log.Fatal("FATAL: JWT_SECRET must be set to a strong secret in production. Refusing to start.")
+		}
+		if cfg.DBPassword == "novapanel_secret" {
+			log.Fatal("FATAL: DB_PASSWORD must be set in production. Refusing to start.")
+		}
+	}
+
 	// Connect to databases
 	pool := database.NewPostgresPool(cfg)
 	defer pool.Close()
@@ -94,6 +104,10 @@ func startServer(cfg *config.Config) {
 
 	// Initialize services
 	authService := services.NewAuthService(pool, cfg)
+
+	// Login brute-force protection
+	loginLimiter := middleware.NewLoginLimiter(rdb)
+
 	domainService := services.NewDomainService(pool)
 	serverService := services.NewServerService(pool)
 	databaseService := services.NewDatabaseService(pool)
@@ -117,7 +131,11 @@ func startServer(cfg *config.Config) {
 	defer worker.Stop()
 
 	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(authService)
+	authHandler := handlers.NewAuthHandler(authService, loginLimiter)
+
+	// Webhook handler for auto-deploy
+	webhookHandler := handlers.NewWebhookHandler(pool, deployService)
+
 	domainHandler := handlers.NewDomainHandler(domainService, serverService, taskQueue)
 	serverHandler := handlers.NewServerHandler(serverService, taskQueue)
 	setupHandler := handlers.NewSetupHandler(pool, taskQueue)
@@ -139,6 +157,7 @@ func startServer(cfg *config.Config) {
 	fileManagerSvc := services.NewFileManagerService(pool)
 	fileManagerHandler := handlers.NewFileManagerHandler(fileManagerSvc)
 	deployHandler := handlers.NewDeployHandler(deployService)
+	deployWSHandler := handlers.NewDeployWSHandler(deployService)
 	appHandler := handlers.NewAppHandler(appService)
 	securityHandler := handlers.NewSecurityHandler(securityService)
 	billingHandler := handlers.NewBillingHandler(billingService)
@@ -146,6 +165,14 @@ func startServer(cfg *config.Config) {
 	auditHandler := handlers.NewAuditHandler(pool)
 	metricsHandler := handlers.NewMetricsHandler(metricsService)
 	sshHandler := handlers.NewSSHHandler(serverService)
+
+	// Team management
+	teamService := services.NewTeamService(pool)
+	teamHandler := handlers.NewTeamHandler(teamService)
+
+	// PHP Version Manager
+	phpService := services.NewPHPService(pool)
+	phpHandler := handlers.NewPHPHandler(phpService)
 
 	// WAF
 	wafService := services.NewWAFService(pool)
@@ -224,7 +251,14 @@ func startServer(cfg *config.Config) {
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/register", authHandler.Register)
-			auth.POST("/login", authHandler.Login)
+			auth.POST("/login", loginLimiter.Middleware(), authHandler.Login)
+		}
+
+		// Webhook routes (public — authenticated via webhook secrets)
+		webhooks := v1.Group("/webhooks")
+		{
+			webhooks.POST("/github/:app_id", webhookHandler.HandleGitHub)
+			webhooks.POST("/gitlab/:app_id", webhookHandler.HandleGitLab)
 		}
 
 		// Protected routes
@@ -242,6 +276,7 @@ func startServer(cfg *config.Config) {
 				domains.GET("/:id", domainHandler.GetByID)
 				domains.PUT("/:id", domainHandler.Update)
 				domains.DELETE("/:id", domainHandler.Delete)
+				domains.PUT("/:id/php", phpHandler.SwitchDomain)
 			}
 
 			// Servers (admin only for create/delete)
@@ -478,7 +513,6 @@ func startServer(cfg *config.Config) {
 				apps.DELETE("/:id", appHandler.Delete)
 			}
 
-			// Phase 3: Deployments
 			deploys := protected.Group("/deployments")
 			{
 				deploys.POST("", deployHandler.Create)
@@ -486,6 +520,7 @@ func startServer(cfg *config.Config) {
 				deploys.GET("/:id", deployHandler.GetByID)
 				deploys.POST("/:id/redeploy", deployHandler.Redeploy)
 				deploys.GET("/:id/logs", deployHandler.GetLogs)
+				deploys.GET("/:id/ws", deployWSHandler.HandleDeployLogs)
 			}
 
 			// Phase 3: Security
@@ -679,6 +714,25 @@ func startServer(cfg *config.Config) {
 			}
 
 
+
+			// Team Management
+			team := protected.Group("/team")
+			{
+				team.POST("/invite", teamHandler.Invite)
+				team.POST("/accept/:id", teamHandler.Accept)
+				team.GET("/members", teamHandler.ListMembers)
+				team.GET("/invites", teamHandler.ListInvites)
+				team.DELETE("/members/:id", teamHandler.Remove)
+			}
+
+			// PHP Version Manager
+			phpRoutes := protected.Group("/servers/:id/php")
+			{
+				phpRoutes.GET("", phpHandler.ListVersions)
+				phpRoutes.POST("", phpHandler.Install)
+				phpRoutes.PUT("/default", phpHandler.SetDefault)
+				phpRoutes.DELETE("/:version", phpHandler.Uninstall)
+			}
 
 			// WebSocket
 			protected.GET("/ws", wsHub.HandleWebSocket)

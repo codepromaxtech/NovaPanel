@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
 	"github.com/novapanel/novapanel/internal/provisioner"
 )
@@ -91,7 +93,7 @@ func (s *DeployService) ExecuteDeployment(ctx context.Context, deploymentID stri
 	// 2. Mark as running
 	now := time.Now()
 	s.pool.Exec(ctx,
-		`UPDATE deployments SET status = 'running', started_at = $1, updated_at = $1 WHERE id = $2`,
+		`UPDATE deployments SET status = 'running', started_at = $1 WHERE id = $2`,
 		now, deployID)
 
 	// 3. Fetch server SSH details
@@ -178,7 +180,7 @@ fi
 	appendLog(fmt.Sprintf("✅ Deployment completed in %s", completedAt.Sub(now).Round(time.Second)))
 
 	s.pool.Exec(ctx,
-		`UPDATE deployments SET status = 'success', build_log = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
+		`UPDATE deployments SET status = 'success', build_log = $1, completed_at = $2 WHERE id = $3`,
 		logBuilder.String(), completedAt, deployID)
 
 	return nil
@@ -264,22 +266,39 @@ func (s *DeployService) GetByID(ctx context.Context, id string) (*models.Deploym
 func (s *DeployService) failDeployment(ctx context.Context, deploymentID string, logMessage string) error {
 	now := time.Now()
 	s.pool.Exec(ctx,
-		`UPDATE deployments SET status = 'failed', build_log = $1, completed_at = $2, updated_at = $2 WHERE id = $3`,
+		`UPDATE deployments SET status = 'failed', build_log = $1, completed_at = $2 WHERE id = $3`,
 		logMessage, now, deploymentID)
-	return fmt.Errorf(logMessage)
+	return errors.New(logMessage)
 }
 
 func (s *DeployService) getServerInfo(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
 	var server provisioner.ServerInfo
 	var port int
+	var encKey, encPassword string
 	err := s.pool.QueryRow(ctx,
 		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
 	if err != nil {
 		return server, err
 	}
 	server.Port = port
+	// Decrypt credentials if encryption key is configured
+	if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
+		if dec, err := novacrypto.Decrypt(encKey, cryptoKey); err == nil {
+			server.SSHKey = dec
+		} else {
+			server.SSHKey = encKey
+		}
+		if dec, err := novacrypto.Decrypt(encPassword, cryptoKey); err == nil {
+			server.SSHPassword = dec
+		} else {
+			server.SSHPassword = encPassword
+		}
+	} else {
+		server.SSHKey = encKey
+		server.SSHPassword = encPassword
+	}
 	return server, nil
 }
 

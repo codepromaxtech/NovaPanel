@@ -25,21 +25,13 @@ export default function Dashboard() {
         serverService.getDashboardStats()
             .then(setStats)
             .catch(() => setStats({
-                total_servers: 5, active_servers: 4, total_domains: 127,
-                total_users: 48, total_apps: 36, pending_tasks: 3,
+                total_servers: 0, active_servers: 0, total_domains: 0,
+                total_users: 0, total_apps: 0, pending_tasks: 0,
             }));
 
         api.get('/audit-logs', { params: { per_page: 8 } })
             .then(res => setActivity(res.data?.data || []))
-            .catch(() => {
-                setActivity([
-                    { id: '1', action: 'domain.created', resource_type: 'domain', resource_name: 'example.com', created_at: new Date(Date.now() - 120000).toISOString() },
-                    { id: '2', action: 'ssl.issued', resource_type: 'ssl', resource_name: 'mysite.io', created_at: new Date(Date.now() - 900000).toISOString() },
-                    { id: '3', action: 'deployment.success', resource_type: 'deploy', resource_name: 'webapp.dev', created_at: new Date(Date.now() - 3600000).toISOString() },
-                    { id: '4', action: 'server.created', resource_type: 'server', resource_name: 'node-us-east-2', created_at: new Date(Date.now() - 10800000).toISOString() },
-                    { id: '5', action: 'backup.completed', resource_type: 'backup', resource_name: 'example.com', created_at: new Date(Date.now() - 18000000).toISOString() },
-                ]);
-            });
+            .catch(() => setActivity([]));
     }, []);
 
     const actionIcons: Record<string, any> = {
@@ -113,7 +105,12 @@ export default function Dashboard() {
                         </button>
                     </div>
                     <div className="space-y-3">
-                        {activity.map((item) => {
+                        {activity.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-10 text-surface-200/30">
+                                <Activity className="w-8 h-8 mb-2" />
+                                <p className="text-sm">No recent activity</p>
+                            </div>
+                        ) : activity.map((item) => {
                             const Icon = actionIcons[item.action] || Activity;
                             const color = actionColors[item.action] || 'text-surface-200/40';
                             return (

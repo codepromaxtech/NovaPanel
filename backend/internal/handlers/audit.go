@@ -24,7 +24,9 @@ func (h *AuditHandler) List(c *gin.Context) {
 	}
 
 	rows, err := h.pool.Query(c.Request.Context(),
-		`SELECT id, user_id, action, resource_type, resource_id, ip_address, details, created_at
+		`SELECT id::text, COALESCE(user_id::text,''), action, COALESCE(resource,''),
+		        COALESCE(resource_id::text,''), COALESCE(host(ip_address),''),
+		        COALESCE(details::text,'{}'), created_at::text
 		 FROM audit_logs ORDER BY created_at DESC LIMIT $1`, perPage)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
@@ -51,7 +53,7 @@ func (h *AuditHandler) List(c *gin.Context) {
 			&e.ResourceID, &e.IPAddress, &e.Details, &e.CreatedAt); err != nil {
 			continue
 		}
-		e.ResourceName = e.ResourceID // Use resource_id as name fallback
+		e.ResourceName = e.ResourceID
 		logs = append(logs, e)
 	}
 

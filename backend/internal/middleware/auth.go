@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/novapanel/novapanel/internal/config"
 )
 
@@ -53,9 +54,16 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		c.Set("user_id", claims.UserID)
+		// Parse UserID to uuid.UUID so handlers can assert directly
+		userUUID, err := uuid.Parse(claims.UserID)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token user_id"})
+			return
+		}
+		c.Set("user_id", userUUID)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
+		c.Set("user_role", claims.Role) // alias for handlers that use "user_role"
 		c.Next()
 	}
 }
