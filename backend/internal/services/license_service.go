@@ -107,7 +107,8 @@ func (s *LicenseService) Verify(ctx context.Context) error {
 	}
 
 	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.LicenseServerURL, bytes.NewReader(body))
+	const licenseServerURL = "https://license.codepromax.com.de"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, licenseServerURL, bytes.NewReader(body))
 	if err != nil {
 		return s.fallback(ctx, fmt.Sprintf("license server unreachable: %v", err))
 	}

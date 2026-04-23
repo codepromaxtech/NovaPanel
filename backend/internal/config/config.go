@@ -38,9 +38,8 @@ type Config struct {
 	StripePriceReseller    string
 
 	// License
-	LicenseKey        string
-	LicenseServerURL  string
-	LicenseProductID  string
+	LicenseKey       string
+	LicenseProductID string
 }
 
 func Load() *Config {
@@ -75,7 +74,6 @@ func Load() *Config {
 		StripePriceReseller:   getEnv("STRIPE_PRICE_RESELLER", ""),
 
 		LicenseKey:       getEnv("LICENSE_KEY", ""),
-		LicenseServerURL: getEnv("LICENSE_SERVER_URL", "https://license.codepromax.com.de"),
 		LicenseProductID: getEnv("LICENSE_PRODUCT_ID", "novapanel"),
 	}
 }
