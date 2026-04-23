@@ -87,18 +87,22 @@ func startServer(cfg *config.Config) {
 	rdb := database.NewRedisClient(cfg)
 	defer rdb.Close()
 
-	// Run migrations automatically in development
-	if cfg.Env == "development" {
+	// Always run migrations at startup — idempotent, safe in production
+	{
 		migrationsDir := "migrations"
 		if _, err := os.Stat(migrationsDir); os.IsNotExist(err) {
 			migrationsDir = "backend/migrations"
 		}
-		if _, err := os.Stat(migrationsDir); !os.IsNotExist(err) {
-			log.Println("Running auto-migrations (development mode)...")
-			if err := database.RunMigrations(pool, migrationsDir); err != nil {
-				log.Printf("Warning: auto-migration failed: %v", err)
-			}
+		if _, err := os.Stat(migrationsDir); os.IsNotExist(err) {
+			// Try path relative to executable (Docker image layout)
+			execPath, _ := os.Executable()
+			migrationsDir = filepath.Join(filepath.Dir(execPath), "migrations")
 		}
+		log.Println("Running database migrations...")
+		if err := database.RunMigrations(pool, migrationsDir); err != nil {
+			log.Fatalf("Migration failed: %v", err)
+		}
+		log.Println("✓ Migrations complete")
 	}
 
 	// Auto-register host server as the first node
