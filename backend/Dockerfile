@@ -13,7 +13,10 @@ WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o novapanel-api ./cmd/api
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -X github.com/novapanel/novapanel/internal/version.AppVersion=${VERSION}" \
+    -o novapanel-api ./cmd/api
 
 # Stage 3: Minimal runtime image
 FROM alpine:3.19

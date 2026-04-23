@@ -1,12 +1,25 @@
-import { Bell, Moon, Sun, Search, LogOut, User } from 'lucide-react';
+import { Bell, Moon, Sun, Search, LogOut, User, Download } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { updateService } from '../../services/system';
 
 export default function Header() {
     const [isDark, setIsDark] = useState(true);
     const [showUserMenu, setShowUserMenu] = useState(false);
+    const [updateAvailable, setUpdateAvailable] = useState(false);
+    const [latestVersion, setLatestVersion] = useState('');
     const { user, clearAuth } = useAuthStore();
     const userMenuRef = useRef<HTMLDivElement>(null);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if (user?.role === 'admin') {
+            updateService.getStatus()
+                .then(s => { setUpdateAvailable(s.update_available); setLatestVersion(s.latest_version); })
+                .catch(() => { /* non-critical */ });
+        }
+    }, [user?.role]);
 
     const toggleTheme = () => {
         setIsDark(!isDark);
@@ -43,10 +56,22 @@ export default function Header() {
 
             {/* Right actions */}
             <div className="flex items-center gap-3">
+                {/* Update available badge */}
+                {updateAvailable && (
+                    <button
+                        onClick={() => navigate('/settings?tab=updates')}
+                        title={`Update available: ${latestVersion}`}
+                        className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-nova-500/15 text-nova-400 text-xs font-medium hover:bg-nova-500/25 transition-colors border border-nova-500/20"
+                    >
+                        <Download className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Update {latestVersion}</span>
+                    </button>
+                )}
+
                 {/* Notifications */}
                 <button className="relative p-2 rounded-lg text-surface-200/60 hover:text-white hover:bg-surface-700/50 transition-colors">
                     <Bell className="w-5 h-5" />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-nova-500 rounded-full animate-pulse" />
+                    {updateAvailable && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-nova-500 rounded-full animate-pulse" />}
                 </button>
 
                 {/* Theme toggle */}

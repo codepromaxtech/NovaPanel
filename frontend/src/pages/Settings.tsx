@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Settings2, User, Lock, Bell, Save, Loader, Key, Shield, Monitor, Plus, Trash2, Copy, Check, QrCode, X, LogOut, Mail, CreditCard, Send } from 'lucide-react';
+import { Settings2, User, Lock, Bell, Save, Loader, Key, Shield, Monitor, Plus, Trash2, Copy, Check, QrCode, X, LogOut, Mail, CreditCard, Send, RefreshCw, Download, ExternalLink, AlertTriangle, CheckCircle2, Zap } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { settingsService } from '../services/billing';
 import { authService } from '../services/auth';
+import { updateService } from '../services/system';
 import { useToast } from '../components/ui/ToastProvider';
 import { useModalLock } from '../hooks/useModalLock';
 
@@ -10,7 +12,8 @@ const btnPrimary = 'flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-t
 
 export default function Settings() {
     const toast = useToast();
-    const [activeTab, setActiveTab] = useState('profile');
+    const [searchParams] = useSearchParams();
+    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
     const [profile, setProfile] = useState({ name: '', email: '' });
     const [passwords, setPasswords] = useState({ current: '', new_pass: '', confirm: '' });
     const [loading, setLoading] = useState(true);
@@ -45,6 +48,16 @@ export default function Settings() {
     const [systemLoading, setSystemLoading] = useState(false);
     const [testingSmtp, setTestingSmtp] = useState(false);
 
+    // Updates (admin)
+    const [updateStatus, setUpdateStatus] = useState<{
+        current_version: string; latest_version: string; update_available: boolean;
+        release_notes: string; release_url: string; last_checked: string; applying: boolean;
+    } | null>(null);
+    const [updateLoading, setUpdateLoading] = useState(false);
+    const [checking, setChecking] = useState(false);
+    const [applyLog, setApplyLog] = useState<string[]>([]);
+    const [updateWs, setUpdateWs] = useState<WebSocket | null>(null);
+
     useEffect(() => {
         settingsService.getProfile()
             .then(data => {
@@ -59,6 +72,7 @@ export default function Settings() {
         if (activeTab === 'api-keys') loadApiKeys();
         if (activeTab === 'sessions') loadSessions();
         if (activeTab === 'smtp' || activeTab === 'stripe') loadSystemSettings();
+        if (activeTab === 'updates') loadUpdateStatus();
     }, [activeTab]);
 
     const loadApiKeys = async () => {
@@ -217,6 +231,49 @@ export default function Settings() {
         finally { setSaving(false); }
     };
 
+    const loadUpdateStatus = async () => {
+        setUpdateLoading(true);
+        try { setUpdateStatus(await updateService.getStatus()); } catch { /* not critical */ }
+        finally { setUpdateLoading(false); }
+    };
+
+    const handleCheckUpdates = async () => {
+        setChecking(true);
+        try {
+            const status = await updateService.checkNow();
+            setUpdateStatus(status);
+            if (status.update_available) toast.success('New version available: ' + status.latest_version);
+            else toast.success('NovaPanel is up to date');
+        } catch { toast.error('Failed to check for updates'); }
+        finally { setChecking(false); }
+    };
+
+    const handleApplyUpdate = async () => {
+        setApplyLog(['Starting update...']);
+        try {
+            await updateService.applyUpdate();
+            // Connect WebSocket to stream progress
+            const wsUrl = (window.location.protocol === 'https:' ? 'wss' : 'ws') + '://' + window.location.host + '/api/v1/ws';
+            const ws = new WebSocket(wsUrl);
+            setUpdateWs(ws);
+            ws.onmessage = (e) => {
+                try {
+                    const event = JSON.parse(e.data);
+                    if (event.type === 'update:progress') {
+                        setApplyLog(l => [...l, `[${event.payload.percent}%] ${event.payload.message}`]);
+                    } else if (event.type === 'update:complete') {
+                        setApplyLog(l => [...l, '✓ Update applied! Reconnecting in 10 seconds...']);
+                        ws.close();
+                        setTimeout(() => window.location.reload(), 10000);
+                    } else if (event.type === 'update:error') {
+                        setApplyLog(l => [...l, '✖ Error: ' + event.payload.message]);
+                        toast.error(event.payload.message);
+                    }
+                } catch { /* ignore parse errors */ }
+            };
+        } catch (e: any) { toast.error(e?.response?.data?.error || 'Failed to start update'); }
+    };
+
     const isAdmin = userRole === 'admin';
     const tabs = [
         { id: 'profile', label: 'Profile', icon: User },
@@ -228,6 +285,7 @@ export default function Settings() {
         ...(isAdmin ? [
             { id: 'smtp', label: 'SMTP / Email', icon: Mail },
             { id: 'stripe', label: 'Stripe Billing', icon: CreditCard },
+            { id: 'updates', label: 'Updates', icon: Download },
         ] : []),
     ];
 
@@ -582,6 +640,98 @@ export default function Settings() {
                                         {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Stripe Settings
                                     </button>
                                 </div>
+                            )}
+                        </div>
+
+                    ) : activeTab === 'updates' ? (
+                        <div className="glass-card rounded-2xl p-6 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <Zap className="w-5 h-5 text-nova-400" /> Software Updates
+                                    </h3>
+                                    <p className="text-sm text-surface-200/50 mt-1">Keep NovaPanel up to date with the latest features and security fixes.</p>
+                                </div>
+                                <button onClick={handleCheckUpdates} disabled={checking} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-700/50 text-sm text-surface-200/70 hover:text-white hover:bg-surface-700 transition-all disabled:opacity-50">
+                                    <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} /> Check Now
+                                </button>
+                            </div>
+
+                            {updateLoading ? (
+                                <div className="flex items-center justify-center py-10"><Loader className="w-5 h-5 text-nova-400 animate-spin" /></div>
+                            ) : updateStatus ? (
+                                <>
+                                    {/* Version cards */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 rounded-xl bg-surface-800/50 border border-surface-700/30">
+                                            <p className="text-xs text-surface-200/40 uppercase tracking-wider mb-1">Current Version</p>
+                                            <p className="text-lg font-bold text-white font-mono">{updateStatus.current_version}</p>
+                                        </div>
+                                        <div className={`p-4 rounded-xl border ${updateStatus.update_available ? 'bg-nova-500/10 border-nova-500/30' : 'bg-surface-800/50 border-surface-700/30'}`}>
+                                            <p className="text-xs text-surface-200/40 uppercase tracking-wider mb-1">Latest Version</p>
+                                            <p className={`text-lg font-bold font-mono ${updateStatus.update_available ? 'text-nova-400' : 'text-white'}`}>
+                                                {updateStatus.latest_version || '—'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Status banner */}
+                                    {updateStatus.update_available ? (
+                                        <div className="flex items-start gap-3 p-4 rounded-xl bg-nova-500/10 border border-nova-500/30">
+                                            <AlertTriangle className="w-5 h-5 text-nova-400 flex-shrink-0 mt-0.5" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-nova-300">Update available: {updateStatus.latest_version}</p>
+                                                <p className="text-xs text-surface-200/50 mt-0.5">
+                                                    {updateStatus.last_checked ? `Last checked ${new Date(updateStatus.last_checked).toLocaleString()}` : ''}
+                                                </p>
+                                            </div>
+                                            {updateStatus.release_url && (
+                                                <a href={updateStatus.release_url} target="_blank" rel="noopener noreferrer"
+                                                    className="flex items-center gap-1 text-xs text-nova-400 hover:text-nova-300 transition-colors flex-shrink-0">
+                                                    <ExternalLink className="w-3 h-3" /> Release
+                                                </a>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-3 p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+                                            <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
+                                            <p className="text-sm text-green-300">NovaPanel is up to date</p>
+                                        </div>
+                                    )}
+
+                                    {/* Release notes */}
+                                    {updateStatus.release_notes && (
+                                        <div>
+                                            <p className="text-sm font-medium text-surface-200 mb-2">Release Notes</p>
+                                            <div className="p-4 rounded-xl bg-surface-800/50 border border-surface-700/30 text-sm text-surface-200/70 whitespace-pre-wrap font-mono leading-relaxed max-h-48 overflow-y-auto">
+                                                {updateStatus.release_notes}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Apply log */}
+                                    {applyLog.length > 0 && (
+                                        <div>
+                                            <p className="text-sm font-medium text-surface-200 mb-2">Update Progress</p>
+                                            <div className="p-4 rounded-xl bg-black/40 border border-surface-700/30 font-mono text-xs text-green-400 space-y-1 max-h-40 overflow-y-auto">
+                                                {applyLog.map((line, i) => <div key={i}>{line}</div>)}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Apply button */}
+                                    {updateStatus.update_available && applyLog.length === 0 && (
+                                        <button onClick={handleApplyUpdate} disabled={updateStatus.applying}
+                                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-nova-600 to-nova-700 text-white text-sm font-medium hover:shadow-lg hover:shadow-nova-500/25 transition-all disabled:opacity-50">
+                                            {updateStatus.applying
+                                                ? <><Loader className="w-4 h-4 animate-spin" /> Applying...</>
+                                                : <><Download className="w-4 h-4" /> Apply Update to {updateStatus.latest_version}</>
+                                            }
+                                        </button>
+                                    )}
+                                </>
+                            ) : (
+                                <p className="text-sm text-surface-200/50">Click "Check Now" to look for updates.</p>
                             )}
                         </div>
 

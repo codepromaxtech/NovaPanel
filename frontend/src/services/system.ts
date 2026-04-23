@@ -1,5 +1,28 @@
 import api from './api';
 
+export const updateService = {
+    async getStatus() {
+        const { data } = await api.get('/settings/updates');
+        return data as {
+            current_version: string;
+            latest_version: string;
+            update_available: boolean;
+            release_notes: string;
+            release_url: string;
+            last_checked: string;
+            applying: boolean;
+        };
+    },
+    async checkNow() {
+        const { data } = await api.post('/settings/updates/check');
+        return data;
+    },
+    async applyUpdate() {
+        const { data } = await api.post('/settings/updates/apply');
+        return data;
+    },
+};
+
 export const cronService = {
     async list(serverId: string, user = 'root') {
         const { data } = await api.post('/cron/list', { server_id: serverId, user });

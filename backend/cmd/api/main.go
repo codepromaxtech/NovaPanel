@@ -21,6 +21,7 @@ import (
 	"github.com/novapanel/novapanel/internal/provisioner"
 	"github.com/novapanel/novapanel/internal/queue"
 	"github.com/novapanel/novapanel/internal/services"
+	"github.com/novapanel/novapanel/internal/version"
 	"github.com/novapanel/novapanel/internal/websocket"
 )
 
@@ -360,6 +361,14 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 		}
 	}()
 
+	// Update checker (runs in background, checks every 6 hours)
+	var updateSvc *services.UpdateService
+	if dockerService != nil {
+		updateSvc = services.NewUpdateService(pool, dockerService.Client(), wsHub)
+		go updateSvc.RunBackgroundChecker(context.Background())
+	}
+	updateHandler := handlers.NewUpdateHandler(updateSvc)
+
 	// Set up Gin router
 	if cfg.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -377,7 +386,7 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok", "service": "novapanel-api", "version": "0.4.0"})
+		c.JSON(200, gin.H{"status": "ok", "service": "novapanel-api", "version": version.AppVersion})
 	})
 
 	// API v1 routes
@@ -700,6 +709,10 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 				settings.GET("/system", middleware.RequireAdmin(), settingsHandler.GetSystemSettings)
 				settings.PUT("/system", middleware.RequireAdmin(), settingsHandler.UpdateSystemSettings)
 				settings.POST("/system/test-smtp", middleware.RequireAdmin(), settingsHandler.TestSMTP)
+				// Update system — admin only
+				settings.GET("/updates", middleware.RequireAdmin(), updateHandler.GetStatus)
+				settings.POST("/updates/check", middleware.RequireAdmin(), updateHandler.CheckNow)
+				settings.POST("/updates/apply", middleware.RequireAdmin(), updateHandler.ApplyUpdate)
 			}
 
 			// Alert rules and incidents
