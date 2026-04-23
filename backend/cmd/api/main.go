@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/novapanel/novapanel/internal/config"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/database"
 	"github.com/novapanel/novapanel/internal/handlers"
 	"github.com/novapanel/novapanel/internal/middleware"
@@ -103,21 +104,26 @@ func startServer(cfg *config.Config) {
 	autoRegisterHostServer(pool)
 
 	// Initialize services
-	authService := services.NewAuthService(pool, cfg)
+	authService := services.NewAuthService(pool, cfg, rdb)
 
 	// Login brute-force protection
 	loginLimiter := middleware.NewLoginLimiter(rdb)
 
+	smtpSvc := services.NewSMTPService(cfg)
+	apiKeySvc := services.NewAPIKeyService(pool)
 	domainService := services.NewDomainService(pool)
 	serverService := services.NewServerService(pool)
 	databaseService := services.NewDatabaseService(pool)
 	emailService := services.NewEmailService(pool)
-	backupService := services.NewBackupService(pool)
+	backupService := services.NewBackupService(pool, cfg.EncryptionKey)
 	deployService := services.NewDeployService(pool)
-	appService := services.NewAppService(pool)
-	securityService := services.NewSecurityService(pool)
+	appService := services.NewAppService(pool, cfg.EncryptionKey)
+	securityService := services.NewSecurityService(pool, cfg.EncryptionKey)
 	billingService := services.NewBillingService(pool)
 	metricsService := services.NewMetricsService(pool)
+	alertSvc := services.NewAlertService(pool, smtpSvc)
+	ftpSvc := services.NewFTPService(pool, cfg.EncryptionKey)
+	resellerSvc := services.NewResellerService(pool)
 
 	// Initialize task queue & workers
 	taskQueue := queue.NewTaskQueue(rdb, pool)
@@ -127,16 +133,103 @@ func startServer(cfg *config.Config) {
 	setupTaskHandler := provisioner.NewSetupHandler(pool)
 	worker.RegisterHandler("server_setup", setupTaskHandler.Handle)
 
+	// nginx:configure — writes upstream load-balancer config and reloads nginx
+	worker.RegisterHandler("nginx:configure", func(ctx context.Context, payload map[string]interface{}) (map[string]interface{}, error) {
+		serverID, _ := payload["server_id"].(string)
+		domain, _ := payload["domain"].(string)
+		rawIPs, _ := payload["target_ips"].([]interface{})
+		if serverID == "" || domain == "" {
+			return nil, fmt.Errorf("nginx:configure: missing server_id or domain")
+		}
+		var targetIPs []string
+		for _, ip := range rawIPs {
+			if s, ok := ip.(string); ok && s != "" {
+				targetIPs = append(targetIPs, s)
+			}
+		}
+		if len(targetIPs) == 0 {
+			return nil, fmt.Errorf("nginx:configure: no target IPs provided")
+		}
+
+		// Build upstream block
+		upstream := fmt.Sprintf("upstream lb_%s {\n", strings.ReplaceAll(domain, ".", "_"))
+		for _, ip := range targetIPs {
+			upstream += fmt.Sprintf("    server %s:80;\n", ip)
+		}
+		upstream += "}\n"
+
+		vhost := fmt.Sprintf(`server {
+    listen 80;
+    server_name %s;
+    location / {
+        proxy_pass http://lb_%s;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}`, domain, strings.ReplaceAll(domain, ".", "_"))
+
+		confContent := upstream + "\n" + vhost
+		confPath := fmt.Sprintf("/etc/nginx/sites-available/%s-lb.conf", domain)
+		enabledPath := fmt.Sprintf("/etc/nginx/sites-enabled/%s-lb.conf", domain)
+
+		script := fmt.Sprintf(`cat > '%s' << 'NGINXEOF'
+%s
+NGINXEOF
+ln -sf '%s' '%s'
+nginx -t 2>&1 && systemctl reload nginx 2>&1
+echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
+
+		var svrInfo provisioner.ServerInfo
+		var port int
+		var encKey, encPassword string
+		err := pool.QueryRow(ctx,
+			`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key,''), COALESCE(ssh_password,''), COALESCE(auth_method,'password')
+			 FROM servers WHERE id = $1`, serverID,
+		).Scan(&svrInfo.IPAddress, &port, &svrInfo.SSHUser, &encKey, &encPassword, &svrInfo.AuthMethod)
+		if err != nil {
+			return nil, fmt.Errorf("nginx:configure: server not found: %w", err)
+		}
+		svrInfo.Port = port
+		if key, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+			if encKey != "" {
+				if dec, derr := novacrypto.Decrypt(encKey, key); derr == nil {
+					encKey = dec
+				}
+			}
+			if encPassword != "" {
+				if dec, derr := novacrypto.Decrypt(encPassword, key); derr == nil {
+					encPassword = dec
+				}
+			}
+		}
+		svrInfo.SSHKey = encKey
+		svrInfo.SSHPassword = encPassword
+
+		out, err := provisioner.RunScript(svrInfo, script)
+		if err != nil {
+			return nil, fmt.Errorf("nginx configure failed: %w\n%s", err, out)
+		}
+		return map[string]interface{}{"output": out}, nil
+	})
+
 	worker.Start(3) // Start 3 worker goroutines
 	defer worker.Stop()
 
 	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(authService, loginLimiter)
+	authHandler := handlers.NewAuthHandler(authService, smtpSvc, cfg.FrontendURL, loginLimiter)
 
 	// Webhook handler for auto-deploy
 	webhookHandler := handlers.NewWebhookHandler(pool, deployService)
 
-	domainHandler := handlers.NewDomainHandler(domainService, serverService, taskQueue)
+	apiKeyHandler := handlers.NewAPIKeyHandler(apiKeySvc)
+	alertHandler := handlers.NewAlertHandler(alertSvc)
+	ftpHandler := handlers.NewFTPHandler(ftpSvc)
+	resellerHandler := handlers.NewResellerHandler(resellerSvc)
+	stripeHandler := handlers.NewStripeHandler(pool, cfg)
+
+	domainHandler := handlers.NewDomainHandler(domainService, serverService, taskQueue, pool)
 	serverHandler := handlers.NewServerHandler(serverService, taskQueue)
 	setupHandler := handlers.NewSetupHandler(pool, taskQueue)
 	transferService := services.NewTransferService(pool)
@@ -151,14 +244,14 @@ func startServer(cfg *config.Config) {
 	backupMgrHandler := handlers.NewBackupManagerHandler(backupMgr)
 	cfService := services.NewCloudflareService(pool)
 	cfHandler := handlers.NewCloudflareHandler(cfService)
-	databaseHandler := handlers.NewDatabaseHandler(databaseService)
+	databaseHandler := handlers.NewDatabaseHandler(databaseService, pool)
 	emailHandler := handlers.NewEmailHandler(emailService)
 	backupHandler := handlers.NewBackupHandler(backupService)
 	fileManagerSvc := services.NewFileManagerService(pool)
 	fileManagerHandler := handlers.NewFileManagerHandler(fileManagerSvc)
 	deployHandler := handlers.NewDeployHandler(deployService)
 	deployWSHandler := handlers.NewDeployWSHandler(deployService)
-	appHandler := handlers.NewAppHandler(appService)
+	appHandler := handlers.NewAppHandler(appService, pool)
 	securityHandler := handlers.NewSecurityHandler(securityService)
 	billingHandler := handlers.NewBillingHandler(billingService)
 	settingsHandler := handlers.NewSettingsHandler(pool)
@@ -175,11 +268,11 @@ func startServer(cfg *config.Config) {
 	phpHandler := handlers.NewPHPHandler(phpService)
 
 	// WAF
-	wafService := services.NewWAFService(pool)
+	wafService := services.NewWAFService(pool, cfg.EncryptionKey)
 	wafHandler := handlers.NewWAFHandler(wafService)
 
 	// Server Modules
-	modulesService := services.NewServerModulesService(pool)
+	modulesService := services.NewServerModulesService(pool, cfg.EncryptionKey)
 	modulesHandler := handlers.NewServerModulesHandler(modulesService)
 
 	// Phase 8: Docker
@@ -200,6 +293,19 @@ func startServer(cfg *config.Config) {
 	// Initialize WebSocket hub
 	wsHub := websocket.NewHub()
 	go wsHub.Run()
+
+	// Prune server_metrics older than 30 days (runs daily)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			res, err := pool.Exec(context.Background(),
+				`DELETE FROM server_metrics WHERE recorded_at < NOW() - INTERVAL '30 days'`)
+			if err == nil {
+				log.Printf("✓ Pruned %d old server_metrics rows", res.RowsAffected())
+			}
+		}
+	}()
 
 	// Start background metrics collector (every 30s)
 	go func() {
@@ -227,6 +333,33 @@ func startServer(cfg *config.Config) {
 		}
 	}()
 
+	// Backup scheduler (every minute)
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			backupService.RunDueSchedules(context.Background())
+		}
+	}()
+
+	// Transfer scheduler (every minute)
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			transferService.RunDueSchedules(context.Background())
+		}
+	}()
+
+	// Alert rule evaluator (every minute)
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			alertSvc.EvaluateRules(context.Background())
+		}
+	}()
+
 	// Set up Gin router
 	if cfg.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -238,6 +371,9 @@ func startServer(cfg *config.Config) {
 	r.Use(middleware.LoggerMiddleware())
 	r.Use(gin.Recovery())
 	r.Use(middleware.RateLimitMiddleware(rdb, 100, 1*time.Minute))
+	if cfg.IPWhitelist != "" {
+		r.Use(middleware.IPWhitelist(middleware.ParseCIDRList(cfg.IPWhitelist)))
+	}
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
@@ -252,7 +388,13 @@ func startServer(cfg *config.Config) {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", loginLimiter.Middleware(), authHandler.Login)
+			auth.POST("/2fa/verify", authHandler.TOTPVerify)
+			auth.POST("/forgot-password", authHandler.ForgotPassword)
+			auth.POST("/reset-password", authHandler.ResetPassword)
 		}
+
+		// Stripe webhook (no JWT — Stripe-Signature validated)
+		v1.POST("/billing/webhook", stripeHandler.Webhook)
 
 		// Webhook routes (public — authenticated via webhook secrets)
 		webhooks := v1.Group("/webhooks")
@@ -261,12 +403,21 @@ func startServer(cfg *config.Config) {
 			webhooks.POST("/gitlab/:app_id", webhookHandler.HandleGitLab)
 		}
 
-		// Protected routes
+		// Protected routes — support both JWT and API key auth
 		protected := v1.Group("")
-		protected.Use(middleware.AuthMiddleware(cfg))
+		protected.Use(middleware.AuthMiddleware(cfg, rdb))
+		protected.Use(middleware.APIKeyAuth(apiKeySvc))
 		{
 			// Auth
 			protected.GET("/auth/me", authHandler.Me)
+			protected.POST("/auth/refresh", authHandler.Refresh)
+			protected.POST("/auth/logout", authHandler.Logout)
+			protected.POST("/auth/2fa/setup", authHandler.TOTPSetup)
+			protected.POST("/auth/2fa/enable", authHandler.TOTPEnable)
+			protected.DELETE("/auth/2fa", authHandler.TOTPDisable)
+			protected.GET("/auth/sessions", authHandler.ListSessions)
+			protected.DELETE("/auth/sessions/:id", authHandler.RevokeSession)
+			protected.DELETE("/auth/sessions", authHandler.RevokeAllOtherSessions)
 
 			// Domains
 			domains := protected.Group("/domains")
@@ -277,6 +428,7 @@ func startServer(cfg *config.Config) {
 				domains.PUT("/:id", domainHandler.Update)
 				domains.DELETE("/:id", domainHandler.Delete)
 				domains.PUT("/:id/php", phpHandler.SwitchDomain)
+				domains.POST("/:id/ssl/wildcard", domainHandler.WildcardSSL)
 			}
 
 			// Servers (admin only for create/delete)
@@ -348,6 +500,10 @@ func startServer(cfg *config.Config) {
 
 				emails.GET("/catchall/:domain_id", emailHandler.GetCatchAll)
 				emails.PUT("/catchall/:domain_id", emailHandler.SetCatchAll)
+
+				emails.POST("/webmail/deploy", emailHandler.DeployWebmail)
+				emails.GET("/webmail/status", emailHandler.WebmailStatus)
+				emails.POST("/webmail/stop", emailHandler.StopWebmail)
 			}
 
 			// WAF (ModSecurity + OWASP CRS)
@@ -532,20 +688,54 @@ func startServer(cfg *config.Config) {
 				security.GET("/events", securityHandler.ListEvents)
 			}
 
-			// Phase 3: Billing
-			billing := protected.Group("/billing")
-			{
-				billing.POST("/plans", middleware.RequireAdmin(), billingHandler.CreatePlan)
-				billing.GET("/plans", billingHandler.ListPlans)
-				billing.GET("/invoices", billingHandler.ListInvoices)
-			}
-
 			// Phase 3: Settings
 			settings := protected.Group("/settings")
 			{
 				settings.GET("/profile", settingsHandler.GetProfile)
 				settings.PUT("/profile", settingsHandler.UpdateProfile)
+				settings.GET("/api-keys", apiKeyHandler.List)
+				settings.POST("/api-keys", apiKeyHandler.Create)
+				settings.DELETE("/api-keys/:id", apiKeyHandler.Revoke)
 			}
+
+			// Alert rules and incidents
+			alerts := protected.Group("/alerts")
+			{
+				alerts.POST("/rules", alertHandler.CreateRule)
+				alerts.GET("/rules", alertHandler.ListRules)
+				alerts.PUT("/rules/:id", alertHandler.UpdateRule)
+				alerts.DELETE("/rules/:id", alertHandler.DeleteRule)
+				alerts.GET("/incidents", alertHandler.ListIncidents)
+			}
+
+			// FTP accounts (per-server)
+			protected.GET("/servers/:id/ftp", ftpHandler.List)
+			protected.POST("/servers/:id/ftp", ftpHandler.Create)
+			protected.DELETE("/servers/:id/ftp/:ftpID", ftpHandler.Delete)
+
+			// Reseller management
+			reseller := protected.Group("/reseller")
+			{
+				reseller.POST("/clients", resellerHandler.AllocateClient)
+				reseller.GET("/clients", resellerHandler.ListClients)
+				reseller.PUT("/clients/:id", resellerHandler.UpdateClientQuota)
+				reseller.DELETE("/clients/:id", resellerHandler.DeleteClient)
+				reseller.GET("/clients/:id/usage", resellerHandler.GetClientUsage)
+			}
+
+			// Billing / Stripe
+			billing := protected.Group("/billing")
+			{
+				billing.POST("/plans", middleware.RequireAdmin(), billingHandler.CreatePlan)
+				billing.GET("/plans", billingHandler.ListPlans)
+				billing.GET("/invoices", billingHandler.ListInvoices)
+				billing.POST("/checkout", stripeHandler.CreateCheckout)
+				billing.GET("/subscription", stripeHandler.GetSubscription)
+				billing.DELETE("/subscription", stripeHandler.CancelSubscription)
+			}
+
+			// Webhook delivery log
+			protected.GET("/apps/:id/webhook-deliveries", webhookHandler.ListDeliveries)
 
 			// Dashboard
 			protected.GET("/dashboard/stats", serverHandler.DashboardStats)
@@ -910,7 +1100,7 @@ func autoDiscoverServices(pool *pgxpool.Pool, serverID string) {
 
 		for _, port := range probe.Ports {
 			for _, host := range hostsToCheck {
-				addr := fmt.Sprintf("%s:%d", host, port)
+				addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 				conn, err := net.DialTimeout("tcp", addr, 1*time.Second)
 				if err == nil {
 					conn.Close()

@@ -1,21 +1,28 @@
-FROM golang:alpine AS builder
+# Build context: project root (NovaPanel/)
+# Stage 1: Build React frontend
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --prefer-offline --legacy-peer-deps
+COPY frontend/ .
+RUN npm run build
 
+# Stage 2: Build Go backend
+FROM golang:alpine AS go-builder
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
+COPY backend/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o novapanel-api ./cmd/api
 
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o novapanel-api ./cmd/api
-
+# Stage 3: Minimal runtime image
 FROM alpine:3.19
 RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 
-COPY --from=builder /app/novapanel-api .
-COPY --from=builder /app/migrations ./migrations
-
-# Copy pre-built frontend assets
-COPY frontend/ ./frontend/
+COPY --from=go-builder /app/novapanel-api .
+COPY --from=go-builder /app/migrations ./migrations
+COPY --from=frontend-builder /app/frontend/dist ./frontend
 
 EXPOSE 8080
 CMD ["./novapanel-api", "serve"]

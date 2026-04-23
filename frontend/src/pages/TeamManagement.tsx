@@ -154,7 +154,7 @@ export default function TeamManagement() {
                 </div>
                 {loading ? (
                     <div className="flex items-center justify-center py-16">
-                        <Loader className="w-6 h-6 text-nova-500 animate-spin" />
+                        <Loader className="w-6 h-6 text-nova-400 animate-spin" />
                     </div>
                 ) : members.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-surface-200/40">
@@ -212,7 +212,7 @@ export default function TeamManagement() {
                                         <button
                                             onClick={() => handleRemove(m.id, m.email)}
                                             disabled={removing === m.id}
-                                            className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/30 hover:text-danger transition-colors disabled:opacity-50"
+                                            className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/50 hover:text-danger transition-colors disabled:opacity-50"
                                         >
                                             {removing === m.id ? <Loader className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                         </button>
@@ -247,7 +247,7 @@ export default function TeamManagement() {
                                     className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
                                     placeholder="colleague@company.com"
                                 />
-                                <p className="text-xs text-surface-200/30 mt-1">Must be a registered NovaPanel user</p>
+                                <p className="text-xs text-surface-200/50 mt-1">Must be a registered NovaPanel user</p>
                             </div>
 
                             <div>

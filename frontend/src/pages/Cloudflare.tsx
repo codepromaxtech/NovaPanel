@@ -147,7 +147,7 @@ export default function Cloudflare() {
                 <div className="space-y-3 bg-surface-800/50 border border-surface-700/50 rounded-2xl p-6">
                     <input value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="API Token or Global API Key" type="password" className={inputCls} />
                     <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email (only for Global API Key)" className={inputCls} />
-                    <p className="text-xs text-surface-200/30">Leave email empty if using API Token</p>
+                    <p className="text-xs text-surface-200/50">Leave email empty if using API Token</p>
                     <button onClick={handleConnect} disabled={loading} className={btnPrimary + " w-full flex items-center justify-center gap-2"}>
                         {loading ? <Loader className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />} Connect
                     </button>
@@ -197,7 +197,7 @@ export default function Cloudflare() {
                         </div>
                         <p className="text-xs text-surface-200/40 mt-1">{z.plan?.name || 'Free'} · NS: {z.name_servers?.slice(0, 2).join(', ')}</p>
                     </button>
-                ))}{zones.length === 0 && <p className="col-span-2 text-center text-surface-200/30 py-8">No zones found</p>}</div>
+                ))}{zones.length === 0 && <p className="col-span-2 text-center text-surface-200/50 py-8">No zones found</p>}</div>
             )}
 
             {/* ════ DNS ════ */}
@@ -211,11 +211,11 @@ export default function Cloudflare() {
                                 <span className="text-white text-sm font-medium truncate">{r.name}</span>
                                 <span className="text-surface-200/40 text-xs truncate">{r.content}</span>
                                 {r.proxied && <Cloud className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
-                                <span className="text-surface-200/20 text-xs">{r.ttl === 1 ? 'Auto' : `${r.ttl}s`}</span>
+                                <span className="text-surface-200/40 text-xs">{r.ttl === 1 ? 'Auto' : `${r.ttl}s`}</span>
                             </div>
-                            <button onClick={() => handleDeleteDNS(r.id)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/30 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleDeleteDNS(r.id)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/50 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
-                    ))}{dnsRecords.length === 0 && <p className="text-center text-surface-200/30 py-8">No DNS records</p>}</div>
+                    ))}{dnsRecords.length === 0 && <p className="text-center text-surface-200/50 py-8">No DNS records</p>}</div>
                 </div>
             )}
 
@@ -267,7 +267,7 @@ export default function Cloudflare() {
                     {analyticsData ? (
                         <pre className="bg-surface-900 rounded-xl p-4 text-xs text-surface-200/60 whitespace-pre-wrap font-mono max-h-96 overflow-auto border border-surface-700/30">{JSON.stringify(analyticsData, null, 2)}</pre>
                     ) : (
-                        <p className="text-center text-surface-200/30 py-8">No analytics data</p>
+                        <p className="text-center text-surface-200/50 py-8">No analytics data</p>
                     )}
                 </div>
             )}
@@ -337,19 +337,19 @@ export default function Cloudflare() {
                                     <Network className="w-4 h-4 text-orange-400" />
                                     <div>
                                         <p className="text-white font-semibold text-sm">{t.name}</p>
-                                        <p className="text-xs text-surface-200/30">{t.id}</p>
+                                        <p className="text-xs text-surface-200/50">{t.id}</p>
                                     </div>
                                     <span className={`px-2 py-0.5 text-xs rounded-full ${t.status === 'healthy' || t.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : t.status === 'inactive' ? 'bg-surface-700/50 text-surface-200/40' : 'bg-amber-500/20 text-amber-400'}`}>{t.status || 'created'}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button onClick={() => handleDeployTunnel(t)} disabled={!deployServer} className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs border border-emerald-500/30 hover:bg-emerald-500/30" title="Deploy to server"><Play className="w-3 h-3 inline mr-1" />Deploy</button>
                                     <button onClick={() => handleStopTunnel(t.name)} disabled={!deployServer} className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-xs border border-red-500/30" title="Stop on server"><Square className="w-3 h-3 inline mr-1" />Stop</button>
-                                    <button onClick={() => handleDeleteTunnel(t.id)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/30 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => handleDeleteTunnel(t.id)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/50 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
                                 </div>
                             </div>
                             {t.connections && t.connections.length > 0 && <p className="text-xs text-surface-200/40 mt-2">{t.connections.length} active connection(s)</p>}
                         </div>
-                    ))}{tunnels.length === 0 && <p className="text-center text-surface-200/30 py-8">No tunnels found. Create one to get started.</p>}</div>
+                    ))}{tunnels.length === 0 && <p className="text-center text-surface-200/50 py-8">No tunnels found. Create one to get started.</p>}</div>
                     {tunnelOutput && <pre className="bg-surface-900 rounded-xl p-4 text-xs text-surface-200/60 whitespace-pre-wrap font-mono max-h-48 overflow-auto border border-surface-700/30">{tunnelOutput}</pre>}
                 </div>
             )}
@@ -361,7 +361,7 @@ export default function Cloudflare() {
                         <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Network className="w-5 h-5 text-orange-400" /> Create Tunnel</h2>
                         <div className="space-y-3">
                             <input value={tunnelForm.name} onChange={e => setTunnelForm({ ...tunnelForm, name: e.target.value })} placeholder="Tunnel name" className={inputCls} />
-                            <p className="text-xs text-surface-200/30">A random secret will be generated automatically</p>
+                            <p className="text-xs text-surface-200/50">A random secret will be generated automatically</p>
                         </div>
                         <div className="flex justify-end gap-3 mt-4">
                             <button onClick={() => setShowCreateTunnel(false)} className="px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 text-sm">Cancel</button>

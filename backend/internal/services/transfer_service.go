@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"time"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
 	"github.com/novapanel/novapanel/internal/provisioner"
 )
@@ -92,15 +93,30 @@ func (s *TransferService) executeTransfer(jobID string) {
 	// Get server SSH info
 	var server provisioner.ServerInfo
 	var port int
+	var encKey, encPassword string
 	err = s.pool.QueryRow(ctx,
-		`SELECT ip_address, port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
 	if err != nil {
 		s.failJob(ctx, jobID, fmt.Sprintf("failed to get server: %v", err))
 		return
 	}
 	server.Port = port
+	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+		if encKey != "" {
+			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
+				encKey = dec
+			}
+		}
+		if encPassword != "" {
+			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
+				encPassword = dec
+			}
+		}
+	}
+	server.SSHKey = encKey
+	server.SSHPassword = encPassword
 
 	// Run rsync
 	output, err := provisioner.RunScript(server, cmd)
@@ -117,11 +133,32 @@ func (s *TransferService) executeTransfer(jobID string) {
 		jobID, output)
 }
 
-func (s *TransferService) buildRsyncCommand(job models.TransferJob) string {
-	opts := job.RsyncOptions
-	if opts == "" {
-		opts = "-avzh --progress"
+// sanitizeRsyncOpts whitelists safe rsync flags to prevent command injection.
+func sanitizeRsyncOpts(opts string) string {
+	allowed := []string{
+		"-a", "-v", "-z", "-h", "-r", "-l", "-p", "-t", "-g", "-o", "-D", "-n",
+		"--archive", "--verbose", "--compress", "--human-readable", "--recursive",
+		"--progress", "--stats", "--checksum", "--backup", "--dry-run",
+		"--partial", "--append", "--update", "--links", "--times", "--perms",
+		"--owner", "--group", "--devices", "--specials",
 	}
+	var safe []string
+	for _, part := range strings.Fields(opts) {
+		for _, a := range allowed {
+			if part == a {
+				safe = append(safe, part)
+				break
+			}
+		}
+	}
+	if len(safe) == 0 {
+		return "-avzh --progress"
+	}
+	return strings.Join(safe, " ")
+}
+
+func (s *TransferService) buildRsyncCommand(job models.TransferJob) string {
+	opts := sanitizeRsyncOpts(job.RsyncOptions)
 
 	cmd := fmt.Sprintf("rsync %s", opts)
 
@@ -346,14 +383,29 @@ func (s *TransferService) ToggleSchedule(ctx context.Context, id string, active 
 func (s *TransferService) DiskUsage(ctx context.Context, serverID, path string) (string, error) {
 	var server provisioner.ServerInfo
 	var port int
+	var encKey, encPassword string
 	err := s.pool.QueryRow(ctx,
-		`SELECT ip_address, port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
 	if err != nil {
 		return "", err
 	}
 	server.Port = port
+	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+		if encKey != "" {
+			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
+				encKey = dec
+			}
+		}
+		if encPassword != "" {
+			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
+				encPassword = dec
+			}
+		}
+	}
+	server.SSHKey = encKey
+	server.SSHPassword = encPassword
 
 	script := fmt.Sprintf("du -sh '%s' 2>/dev/null && echo '---' && ls -la '%s' 2>/dev/null | head -20", path, path)
 	output, err := provisioner.RunScript(server, script)
@@ -363,7 +415,47 @@ func (s *TransferService) DiskUsage(ctx context.Context, serverID, path string) 
 	return output, nil
 }
 
-// used by executeTransfer when building the command
-func init() {
-	_ = time.Now // ensure import
+// RunDueSchedules executes transfer schedules whose next_run has passed.
+func (s *TransferService) RunDueSchedules(ctx context.Context) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, user_id, source_server_id, dest_server_id, source_path, dest_path,
+		        direction, rsync_options, exclude_patterns, bandwidth_limit, delete_extra
+		 FROM transfer_schedules WHERE is_active = true AND next_run <= NOW()`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var sched models.TransferSchedule
+		var req models.CreateTransferRequest
+		if err := rows.Scan(&sched.ID, &sched.UserID, &sched.SourceServerID, &sched.DestServerID,
+			&sched.SourcePath, &sched.DestPath, &sched.Direction, &sched.RsyncOptions,
+			&sched.ExcludePatterns, &sched.BandwidthLimit, &sched.DeleteExtra); err != nil {
+			continue
+		}
+		req = models.CreateTransferRequest{
+			SourcePath:      sched.SourcePath,
+			DestPath:        sched.DestPath,
+			Direction:       sched.Direction,
+			RsyncOptions:    sched.RsyncOptions,
+			ExcludePatterns: sched.ExcludePatterns,
+			BandwidthLimit:  sched.BandwidthLimit,
+			DeleteExtra:     sched.DeleteExtra,
+		}
+		if sched.SourceServerID != nil {
+			req.SourceServerID = sched.SourceServerID.String()
+		}
+		if sched.DestServerID != nil {
+			req.DestServerID = sched.DestServerID.String()
+		}
+
+		go func(schedID string, userID uuid.UUID, r models.CreateTransferRequest) {
+			runCtx := context.Background()
+			_, _ = s.CreateTransfer(runCtx, userID, r)
+			s.pool.Exec(runCtx,
+				`UPDATE transfer_schedules SET last_run = NOW(), next_run = NOW() + INTERVAL '1 day' WHERE id = $1`,
+				schedID)
+		}(sched.ID.String(), sched.UserID, req)
+	}
 }

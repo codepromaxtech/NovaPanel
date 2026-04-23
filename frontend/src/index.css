@@ -68,6 +68,35 @@
 
 @layer utilities {
 
+  /* Sidebar logo gradient text */
+  .gradient-text {
+    background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Custom scrollbar — applied on specific elements for consistency */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  /* Lock body scroll when a modal is open */
+  .modal-open {
+    overflow: hidden;
+  }
+
   /* Premium Glassmorphism */
   .glass-panel {
     background: rgba(15, 23, 42, 0.4);

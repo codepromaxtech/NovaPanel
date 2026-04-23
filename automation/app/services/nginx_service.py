@@ -81,6 +81,7 @@ server {
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
+    {% endif %}
 }
 
 {% if ssl_enabled %}
@@ -145,6 +146,7 @@ server {
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
+    {% endif %}
 }
 {% endif %}
 """

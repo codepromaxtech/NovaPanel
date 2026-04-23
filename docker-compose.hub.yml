@@ -1,0 +1,168 @@
+# NovaPanel — Production install (Docker Hub images)
+# Usage:
+#   1. cp .env.example .env  && edit values
+#   2. docker compose -f docker-compose.hub.yml up -d
+
+networks:
+  db-net:
+    driver: bridge
+    internal: true
+  app-net:
+    driver: bridge
+  socket-net:
+    driver: bridge
+    internal: true
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: novapanel-db
+    restart: unless-stopped
+    networks: [db-net]
+    environment:
+      POSTGRES_DB: ${DB_NAME:-novapanel}
+      POSTGRES_USER: ${DB_USER:-novapanel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+      - /var/run/postgresql:mode=0775,uid=70,gid=70
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-novapanel} -d ${DB_NAME:-novapanel}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: novapanel-redis
+    restart: unless-stopped
+    networks: [db-net]
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --protected-mode yes
+      --rename-command FLUSHALL ""
+      --rename-command FLUSHDB  ""
+      --rename-command DEBUG    ""
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+    volumes:
+      - redis_data:/data
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: novapanel-docker-proxy
+    restart: unless-stopped
+    networks: [socket-net]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      VOLUMES: 1
+      NETWORKS: 1
+      INFO: 1
+      PING: 1
+      EVENTS: 1
+      SERVICES: 1
+      TASKS: 1
+      POST: 1
+      BUILD: 1
+      AUTH: 0
+      SECRETS: 0
+      SWARM: 0
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  api:
+    image: codepromax24/novapanel:latest   # pulled from Docker Hub
+    container_name: novapanel-api
+    restart: unless-stopped
+    networks: [db-net, app-net, socket-net]
+    ports:
+      - "${PANEL_PORT:-8080}:8080"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-novapanel}
+      DB_USER: ${DB_USER:-novapanel}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      DOCKER_HOST: tcp://docker-proxy:2375
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ENV: production
+      CORS_ORIGINS: ${PANEL_URL:-http://localhost:8080}
+      AUTOMATION_URL: http://automation:8001
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    volumes:
+      - /etc/nginx:/host/nginx:ro
+      - /etc/apache2:/host/apache2:ro
+      - /etc/systemd/system:/host/systemd/system:ro
+      - /lib/systemd/system:/host/systemd/lib:ro
+      - /var/run/dbus:/var/run/dbus:ro
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      docker-proxy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  automation:
+    image: codepromax24/automation:latest  # pulled from Docker Hub
+    container_name: novapanel-automation
+    restart: unless-stopped
+    networks: [db-net, app-net]
+    expose: ["8001"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-novapanel}
+      DB_USER: ${DB_USER:-novapanel}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      API_URL: http://api:8080
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

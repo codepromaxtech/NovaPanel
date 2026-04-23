@@ -128,7 +128,7 @@ export default function Backups() {
                             <button onClick={() => handleDelete(b.id)} className="p-2 rounded-lg hover:bg-red-500/20 text-surface-200/40 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
                         </div>
                     ))}
-                    {!loading && backups.length === 0 && <p className="text-center text-surface-200/30 py-12">No backups yet</p>}
+                    {!loading && backups.length === 0 && <p className="text-center text-surface-200/50 py-12">No backups yet</p>}
                 </div>
             )}
 

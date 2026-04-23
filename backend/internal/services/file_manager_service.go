@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/provisioner"
 )
+
 
 // FileManagerService handles SSH-based remote file management
 type FileManagerService struct {
@@ -23,18 +25,60 @@ func NewFileManagerService(pool *pgxpool.Pool) *FileManagerService {
 func (s *FileManagerService) getServer(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
 	var server provisioner.ServerInfo
 	var port int
+	var encKey, encPassword string
 	err := s.pool.QueryRow(ctx,
-		`SELECT ip_address, port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
+	if err != nil {
+		return server, err
+	}
 	server.Port = port
-	return server, err
+	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+		if encKey != "" {
+			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
+				encKey = dec
+			}
+		}
+		if encPassword != "" {
+			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
+				encPassword = dec
+			}
+		}
+	}
+	server.SSHKey = encKey
+	server.SSHPassword = encPassword
+	return server, nil
+}
+
+// blockedPaths are paths that client-role users must not be able to access.
+var blockedPaths = []string{
+	"/etc/shadow", "/etc/sudoers", "/etc/sudoers.d",
+	"/root", "/proc", "/sys", "/dev",
+	"/etc/ssh", "/boot", "/run/secrets",
+}
+
+// isSafePath rejects absolute paths that traverse into system-critical locations.
+func isSafePath(path string) bool {
+	if path == "" || path == "/" {
+		return true
+	}
+	clean := strings.TrimRight(path, "/")
+	for _, blocked := range blockedPaths {
+		if clean == blocked || strings.HasPrefix(clean+"/", blocked+"/") {
+			return false
+		}
+	}
+	return true
 }
 
 // ListFiles lists files/dirs in a directory on a remote server
 func (s *FileManagerService) ListFiles(ctx context.Context, serverID, path string) (string, error) {
 	if path == "" {
 		path = "/"
+	}
+	if !isSafePath(path) {
+		return "", fmt.Errorf("access to this path is restricted")
 	}
 	server, err := s.getServer(ctx, serverID)
 	if err != nil {
@@ -71,6 +115,9 @@ print(json.dumps(items))
 
 // ReadFile reads a file content from remote server (base64 for binary safety)
 func (s *FileManagerService) ReadFile(ctx context.Context, serverID, path string) (string, error) {
+	if !isSafePath(path) {
+		return "", fmt.Errorf("access to this path is restricted")
+	}
 	server, err := s.getServer(ctx, serverID)
 	if err != nil {
 		return "", err
@@ -92,6 +139,9 @@ fi
 
 // WriteFile writes content to a file on remote server
 func (s *FileManagerService) WriteFile(ctx context.Context, serverID, path, content string) (string, error) {
+	if !isSafePath(path) {
+		return "", fmt.Errorf("access to this path is restricted")
+	}
 	server, err := s.getServer(ctx, serverID)
 	if err != nil {
 		return "", err
@@ -153,6 +203,9 @@ func (s *FileManagerService) Move(ctx context.Context, serverID, src, dest strin
 
 // Delete deletes a file or directory
 func (s *FileManagerService) Delete(ctx context.Context, serverID, path string) (string, error) {
+	if !isSafePath(path) {
+		return "", fmt.Errorf("access to this path is restricted")
+	}
 	server, err := s.getServer(ctx, serverID)
 	if err != nil {
 		return "", err

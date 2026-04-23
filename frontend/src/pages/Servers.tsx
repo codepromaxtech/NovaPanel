@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
     Server, Plus, Cpu, HardDrive, MemoryStick, Wifi, X,
@@ -10,6 +11,7 @@ import { serverService } from '../services/servers';
 import { modulesService, ModuleInfo } from '../services/modules';
 import { phpService, PHPVersion } from '../services/php';
 import { useToast } from '../components/ui/ToastProvider';
+import { useModalLock } from '../hooks/useModalLock';
 
 const PHP_VERSIONS = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
 
@@ -51,6 +53,81 @@ const osOptions = [
 
 const allOs = osOptions.flatMap(g => g.items);
 
+function OsDropdown({ currentOs, onSelect }: { currentOs: string; onSelect: (id: string) => void }) {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const btnRef = useRef<HTMLButtonElement>(null);
+    const portalRef = useRef<HTMLDivElement>(null);
+    const [rect, setRect] = useState<DOMRect | null>(null);
+
+    const toggle = () => {
+        if (!open && btnRef.current) setRect(btnRef.current.getBoundingClientRect());
+        setOpen(o => !o);
+    };
+
+    useEffect(() => {
+        if (!open) return;
+        const handler = (e: MouseEvent) => {
+            const t = e.target as Node;
+            if (!btnRef.current?.contains(t) && !portalRef.current?.contains(t)) {
+                setOpen(false);
+                setSearch('');
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [open]);
+
+    const selected = allOs.find(o => o.id === currentOs);
+
+    return (
+        <>
+            <button type="button" ref={btnRef} onClick={toggle}
+                className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30">
+                <div className="flex items-center gap-2">
+                    <span>{selected?.logo}</span>
+                    <span className="truncate">{selected?.label || 'Select OS'}</span>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-surface-200/50 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
+            </button>
+            {open && rect && ReactDOM.createPortal(
+                <div ref={portalRef}
+                    className="fixed z-[200] p-2 rounded-xl border border-surface-700/50 bg-surface-900/95 backdrop-blur-xl shadow-2xl"
+                    style={{ left: rect.left, top: rect.bottom + 6, width: rect.width }}>
+                    <div className="relative mb-2">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-200/40" />
+                        <input type="text" placeholder="Search OS..." value={search} onChange={e => setSearch(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 rounded-lg bg-surface-800/50 border border-surface-700/50 text-white text-xs focus:outline-none focus:ring-1 focus:ring-nova-500/50"
+                            autoFocus onClick={e => e.stopPropagation()} />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto pr-1 custom-scrollbar space-y-2">
+                        {osOptions.map(group => {
+                            const filtered = group.items.filter(o => o.label.toLowerCase().includes(search.toLowerCase()));
+                            if (!filtered.length) return null;
+                            return (
+                                <div key={group.category}>
+                                    <p className="text-[10px] font-semibold text-surface-200/40 uppercase tracking-widest mb-1 px-2">{group.category}</p>
+                                    <div className="space-y-0.5">
+                                        {filtered.map(os => (
+                                            <button key={os.id} type="button"
+                                                onClick={() => { onSelect(os.id); setOpen(false); setSearch(''); }}
+                                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${currentOs === os.id ? 'bg-nova-500/20 text-white' : 'text-surface-200 hover:bg-surface-800 hover:text-white'}`}>
+                                                <span className="flex items-center gap-2">{os.logo} {os.label}</span>
+                                                {currentOs === os.id && <div className="w-1.5 h-1.5 rounded-full bg-nova-500" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>,
+                document.body
+            )}
+        </>
+    );
+}
+
 const emptyServer = {
     name: '', hostname: '', ip_address: '', port: 22, os: 'Ubuntu 24.04', role: 'worker',
     ssh_user: 'root', auth_method: 'password', ssh_key: '', ssh_password: '', modules: [] as string[],
@@ -66,10 +143,9 @@ export default function Servers() {
     const [servers, setServers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAdd, setShowAdd] = useState(false);
+    useModalLock(showAdd);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
-    const [osSearch, setOsSearch] = useState('');
-    const [showOsDropdown, setShowOsDropdown] = useState(false);
     const [formData, setFormData] = useState({ ...emptyServer });
     const [serverModules, setServerModules] = useState<Record<string, string[]>>({});
     const [availableModules, setAvailableModules] = useState<ModuleInfo[]>([]);
@@ -84,8 +160,6 @@ export default function Servers() {
     // Edit modal state
     const [editServer, setEditServer] = useState<any | null>(null);
     const [editData, setEditData] = useState({ ...emptyServer });
-    const [editOsSearch, setEditOsSearch] = useState('');
-    const [showEditOsDropdown, setShowEditOsDropdown] = useState(false);
     const [saving, setSaving] = useState(false);
     const [editError, setEditError] = useState('');
 
@@ -310,50 +384,6 @@ export default function Servers() {
 
     const formatMetric = (val: number | undefined, suffix: string) => val !== undefined ? `${Math.round(val)}${suffix}` : '--';
 
-    // ─── Reusable OS Dropdown ───
-    const renderOsDropdown = (currentOs: string, search: string, showDropdown: boolean, setSearch: (v: string) => void, setDropdown: (v: boolean) => void, onSelect: (id: string) => void) => (
-        <div className="relative">
-            <button type="button" onClick={() => setDropdown(!showDropdown)}
-                className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30">
-                <div className="flex items-center gap-2">
-                    <span>{allOs.find(o => o.id === currentOs)?.logo}</span>
-                    <span className="truncate">{allOs.find(o => o.id === currentOs)?.label || 'Select OS'}</span>
-                </div>
-                <ChevronDown className={`w-4 h-4 text-surface-200/50 transition-transform flex-shrink-0 ${showDropdown ? 'rotate-180' : ''}`} />
-            </button>
-            {showDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-2 p-2 rounded-xl border border-surface-700/50 bg-surface-900/95 backdrop-blur-xl shadow-2xl z-[70]">
-                    <div className="relative mb-2">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-200/40" />
-                        <input type="text" placeholder="Search OS..." value={search} onChange={e => setSearch(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 rounded-lg bg-surface-800/50 border border-surface-700/50 text-white text-xs focus:outline-none focus:ring-1 focus:ring-nova-500/50"
-                            onClick={e => e.stopPropagation()} autoFocus />
-                    </div>
-                    <div className="max-h-48 overflow-y-auto pr-1 custom-scrollbar space-y-2">
-                        {osOptions.map(group => {
-                            const filtered = group.items.filter(os => os.label.toLowerCase().includes(search.toLowerCase()));
-                            if (!filtered.length) return null;
-                            return (
-                                <div key={group.category}>
-                                    <p className="text-[10px] font-semibold text-surface-200/40 uppercase tracking-widest mb-1 px-2">{group.category}</p>
-                                    <div className="space-y-0.5">
-                                        {filtered.map(os => (
-                                            <button key={os.id} type="button" onClick={() => { onSelect(os.id); setDropdown(false); setSearch(''); }}
-                                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${currentOs === os.id ? 'bg-nova-500/20 text-white' : 'text-surface-200 hover:bg-surface-800 hover:text-white'}`}>
-                                                <span className="flex items-center gap-2">{os.logo} {os.label}</span>
-                                                {currentOs === os.id && <div className="w-1.5 h-1.5 rounded-full bg-nova-500" />}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-
     // ─── Reusable SSH Auth Section ───
     const renderSSHAuth = (data: typeof emptyServer, setData: (fn: (prev: typeof emptyServer) => typeof emptyServer) => void, fileRef: React.RefObject<HTMLInputElement>) => (
         <div className="space-y-4 pt-2">
@@ -419,7 +449,7 @@ export default function Servers() {
 
             {loading ? (
                 <div className="flex items-center justify-center py-20">
-                    <Loader className="w-6 h-6 text-nova-500 animate-spin" />
+                    <Loader className="w-6 h-6 text-nova-400 animate-spin" />
                 </div>
             ) : servers.length === 0 ? (
                 <div className="glass-card rounded-2xl flex flex-col items-center justify-center py-20 text-surface-200/40">
@@ -453,11 +483,11 @@ export default function Servers() {
                                             {server.status}
                                         </span>
                                         <button onClick={() => openEdit(server)}
-                                            className="p-1.5 rounded-lg hover:bg-nova-500/10 text-surface-200/20 hover:text-nova-400 transition-colors opacity-0 group-hover:opacity-100">
+                                            className="p-1.5 rounded-lg hover:bg-nova-500/10 text-surface-200/40 hover:text-nova-400 transition-colors opacity-0 group-hover:opacity-100">
                                             <Pencil className="w-3.5 h-3.5" />
                                         </button>
                                         <button onClick={() => handleDelete(server.id)}
-                                            className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/20 hover:text-danger transition-colors opacity-0 group-hover:opacity-100">
+                                            className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/40 hover:text-danger transition-colors opacity-0 group-hover:opacity-100">
                                             <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                     </div>
@@ -467,19 +497,19 @@ export default function Servers() {
                                 <div className="grid grid-cols-3 gap-2 mb-3">
                                     <div className="bg-surface-800/40 rounded-lg px-2.5 py-2 text-center">
                                         <Cpu className="w-3.5 h-3.5 mx-auto mb-1 text-blue-400" />
-                                        <p className="text-[10px] text-surface-200/30">CPU</p>
+                                        <p className="text-[10px] text-surface-200/50">CPU</p>
                                         <p className="text-xs font-medium text-white">{formatMetric(met?.cpu_percent, '%')}</p>
                                     </div>
                                     <div className="bg-surface-800/40 rounded-lg px-2.5 py-2 text-center">
                                         <MemoryStick className="w-3.5 h-3.5 mx-auto mb-1 text-green-400" />
-                                        <p className="text-[10px] text-surface-200/30">RAM</p>
+                                        <p className="text-[10px] text-surface-200/50">RAM</p>
                                         <p className="text-xs font-medium text-white">
                                             {met ? `${Math.round(met.ram_used_mb)}/${Math.round(met.ram_total_mb)}M` : '--'}
                                         </p>
                                     </div>
                                     <div className="bg-surface-800/40 rounded-lg px-2.5 py-2 text-center">
                                         <HardDrive className="w-3.5 h-3.5 mx-auto mb-1 text-purple-400" />
-                                        <p className="text-[10px] text-surface-200/30">Disk</p>
+                                        <p className="text-[10px] text-surface-200/50">Disk</p>
                                         <p className="text-xs font-medium text-white">
                                             {met ? `${met.disk_used_gb.toFixed(1)}/${met.disk_total_gb.toFixed(1)}G` : '--'}
                                         </p>
@@ -493,24 +523,24 @@ export default function Servers() {
                                     ))}
                                     {mods.length > 4 && <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-surface-200/40">+{mods.length - 4}</span>}
                                     <button onClick={() => openModulePicker(server.id)}
-                                        className="text-[9px] px-1.5 py-0.5 rounded border border-dashed border-surface-600/50 text-surface-200/30 hover:text-nova-400 hover:border-nova-500/30 flex items-center gap-0.5 transition-colors">
+                                        className="text-[9px] px-1.5 py-0.5 rounded border border-dashed border-surface-600/50 text-surface-200/50 hover:text-nova-400 hover:border-nova-500/30 flex items-center gap-0.5 transition-colors">
                                         <Puzzle className="w-2.5 h-2.5" /> Modules
                                     </button>
                                 </div>
 
                                 <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                                    <div className="flex items-center gap-2 text-xs text-surface-200/30">
+                                    <div className="flex items-center gap-2 text-xs text-surface-200/50">
                                         {server.agent_status === 'connected' ? <Wifi className="w-3.5 h-3.5 text-green-400" /> : <WifiOff className="w-3.5 h-3.5 text-red-400" />}
                                         <span>{server.os}</span>
                                     </div>
                                     <div className="flex items-center gap-1">
                                         <button onClick={() => openPHPManager(server.id)}
-                                            className="flex items-center gap-1.5 text-xs text-surface-200/30 hover:text-purple-400 transition-colors px-2 py-1 rounded-lg hover:bg-purple-500/10"
+                                            className="flex items-center gap-1.5 text-xs text-surface-200/50 hover:text-purple-400 transition-colors px-2 py-1 rounded-lg hover:bg-purple-500/10"
                                             title="PHP Version Manager">
                                             🐘 PHP
                                         </button>
                                         <button onClick={() => navigate(`/servers/${server.id}/terminal`)}
-                                            className="flex items-center gap-1.5 text-xs text-surface-200/30 hover:text-nova-400 transition-colors px-2 py-1 rounded-lg hover:bg-nova-500/10">
+                                            className="flex items-center gap-1.5 text-xs text-surface-200/50 hover:text-nova-400 transition-colors px-2 py-1 rounded-lg hover:bg-nova-500/10">
                                             <Terminal className="w-3.5 h-3.5" /> Terminal
                                         </button>
                                     </div>
@@ -577,7 +607,7 @@ export default function Servers() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-surface-200 mb-1.5">Operating System</label>
-                                        {renderOsDropdown(formData.os, osSearch, showOsDropdown, setOsSearch, setShowOsDropdown, (id) => setFormData({ ...formData, os: id }))}
+                                        <OsDropdown currentOs={formData.os} onSelect={(id) => setFormData({ ...formData, os: id })} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-surface-200 mb-1.5">Role</label>
@@ -626,7 +656,7 @@ export default function Servers() {
                         {step === 2 && (
                             <div className="space-y-4">
                                 <p className="text-sm text-surface-200/60">Select modules to auto-install on the server after creation. You can change these later.</p>
-                                <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
+                                <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar pb-4">
                                     {availableModules.map(m => (
                                         <label key={m.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${formData.modules.includes(m.id) ? 'border-nova-500/50 bg-nova-500/10' : 'border-surface-700/30 hover:bg-surface-800'}`}>
                                             <input type="checkbox" checked={formData.modules.includes(m.id)}
@@ -705,7 +735,7 @@ export default function Servers() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-surface-200 mb-1.5">Operating System</label>
-                                    {renderOsDropdown(editData.os, editOsSearch, showEditOsDropdown, setEditOsSearch, setShowEditOsDropdown, (id) => setEditData({ ...editData, os: id }))}
+                                    <OsDropdown currentOs={editData.os} onSelect={(id) => setEditData({ ...editData, os: id })} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-surface-200 mb-1.5">Role</label>
@@ -744,7 +774,7 @@ export default function Servers() {
                             <h3 className="text-lg font-semibold text-white">Server Modules</h3>
                             <button onClick={() => setModulePickerServer(null)} className="text-surface-200/40 hover:text-white"><X className="w-5 h-5" /></button>
                         </div>
-                        <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
+                        <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar pb-4">
                             {availableModules.map(m => (
                                 <label key={m.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selectedModules.includes(m.id) ? 'border-nova-500/50 bg-nova-500/10' : 'border-surface-700/30 hover:bg-surface-800'}`}>
                                     <input type="checkbox" checked={selectedModules.includes(m.id)}
@@ -780,7 +810,7 @@ export default function Servers() {
                         </div>
 
                         {phpLoading ? (
-                            <div className="flex items-center justify-center py-10"><Loader className="w-5 h-5 text-nova-500 animate-spin" /></div>
+                            <div className="flex items-center justify-center py-10"><Loader className="w-5 h-5 text-nova-400 animate-spin" /></div>
                         ) : (
                             <div className="space-y-2">
                                 {PHP_VERSIONS.map(ver => {
@@ -821,7 +851,7 @@ export default function Servers() {
                                                         )}
                                                         <button
                                                             onClick={() => handleUninstallPHP(ver)}
-                                                            className="p-1.5 rounded-lg text-surface-200/30 hover:text-danger hover:bg-danger/10 transition-colors"
+                                                            className="p-1.5 rounded-lg text-surface-200/50 hover:text-danger hover:bg-danger/10 transition-colors"
                                                         >
                                                             <Trash2 className="w-3.5 h-3.5" />
                                                         </button>

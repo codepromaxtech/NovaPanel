@@ -85,8 +85,8 @@ export default function WAF() {
                 <p className="text-white font-medium text-sm">{label}</p>
                 <p className="text-xs text-surface-200/40 mt-0.5">{desc}</p>
             </div>
-            <button onClick={() => updateConfig({ [field]: !value })} className="p-1">
-                {value ? <ToggleRight className="w-8 h-8 text-emerald-400" /> : <ToggleLeft className="w-8 h-8 text-surface-200/30" />}
+            <button onClick={() => updateConfig({ [field]: !value })} className="p-1" aria-label={value ? 'Disable' : 'Enable'} aria-pressed={value}>
+                {value ? <ToggleRight className="w-8 h-8 text-emerald-400" /> : <ToggleLeft className="w-8 h-8 text-surface-200/50" />}
             </button>
         </div>
     );
@@ -154,7 +154,7 @@ export default function WAF() {
                                         <option value="detection_only">Detection Only (Log but don't block)</option>
                                         <option value="blocking">Blocking (Active protection)</option>
                                     </select>
-                                    <p className="text-xs text-surface-200/30 mt-1.5">
+                                    <p className="text-xs text-surface-200/50 mt-1.5">
                                         {config.mode === 'blocking' ? '🛡 Malicious requests are blocked' : '👁 Threats are logged but not blocked'}
                                     </p>
                                 </div>
@@ -168,7 +168,7 @@ export default function WAF() {
                                             </button>
                                         ))}
                                     </div>
-                                    <p className="text-xs text-surface-200/30 mt-1.5">Higher = more strict, may cause false positives</p>
+                                    <p className="text-xs text-surface-200/50 mt-1.5">Higher = more strict, may cause false positives</p>
                                 </div>
                             </div>
 
@@ -225,7 +225,7 @@ export default function WAF() {
                                         </button>
                                     </div>
                                 ))}
-                                {rules.length === 0 && <p className="text-center text-surface-200/30 py-12">All rules are active — no rules have been disabled</p>}
+                                {rules.length === 0 && <p className="text-center text-surface-200/50 py-12">All rules are active — no rules have been disabled</p>}
                             </div>
                         </div>
                     )}
@@ -257,7 +257,7 @@ export default function WAF() {
                                         </button>
                                     </div>
                                 ))}
-                                {whitelist.length === 0 && <p className="text-center text-surface-200/30 py-12">No whitelist entries — all traffic is filtered</p>}
+                                {whitelist.length === 0 && <p className="text-center text-surface-200/50 py-12">No whitelist entries — all traffic is filtered</p>}
                             </div>
                         </div>
                     )}
@@ -301,7 +301,7 @@ export default function WAF() {
                                         ))}
                                     </tbody>
                                 </table>
-                                {logs.length === 0 && <p className="text-center text-surface-200/30 py-12">No WAF events recorded</p>}
+                                {logs.length === 0 && <p className="text-center text-surface-200/50 py-12">No WAF events recorded</p>}
                             </div>
                         </div>
                     )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useModalLock } from '../hooks/useModalLock';
 import { FolderOpen, File, ChevronRight, Plus, Trash2, ArrowLeft, Loader, X, Save, Search, Copy, Scissors, FileText, FolderPlus, RefreshCw, Archive, MoreVertical, Edit3, Eye, Lock, Download } from 'lucide-react';
 import { fileService } from '../services/files';
 import { serverService } from '../services/servers';
@@ -57,6 +58,7 @@ export default function FileManager() {
     const [showChmod, setShowChmod] = useState<FileItem | null>(null);
     const [chmodValue, setChmodValue] = useState('');
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItem } | null>(null);
+    useModalLock(!!showCreate || !!showRename || showSearch || !!showChmod);
 
     useEffect(() => { serverService.list(1, 100).then(r => setServers(r.data || [])).catch(() => { }); }, []);
 
@@ -186,7 +188,7 @@ export default function FileManager() {
                         <p className="text-white font-semibold">{s.name}</p>
                         <p className="text-xs text-surface-200/40">{s.ip_address} · {s.hostname}</p>
                     </button>
-                ))}{servers.length === 0 && <p className="text-center text-surface-200/30 py-8">No servers found</p>}</div>
+                ))}{servers.length === 0 && <p className="text-center text-surface-200/50 py-8">No servers found</p>}</div>
             </div>
         );
     }
@@ -200,7 +202,7 @@ export default function FileManager() {
                     <button onClick={() => setServerId('')} className="text-xs text-surface-200/40 hover:text-white">← Servers</button>
                     <FolderOpen className="w-5 h-5 text-nova-400" />
                     <span className="text-white font-semibold text-sm">File Manager</span>
-                    <span className="text-surface-200/30 text-xs">{servers.find(s => s.id === serverId)?.name}</span>
+                    <span className="text-surface-200/50 text-xs">{servers.find(s => s.id === serverId)?.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <button onClick={() => setShowSearch(true)} className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white" title="Search (Ctrl+F)"><Search className="w-4 h-4" /></button>
@@ -216,7 +218,7 @@ export default function FileManager() {
                 <button onClick={() => navigateTo('/')} className="text-surface-200/50 hover:text-white">/</button>
                 {currentPath.split('/').filter(Boolean).map((seg, i, arr) => (
                     <span key={i} className="flex items-center gap-1">
-                        <ChevronRight className="w-2.5 h-2.5 text-surface-200/20" />
+                        <ChevronRight className="w-2.5 h-2.5 text-surface-200/40" />
                         <button onClick={() => navigateTo('/' + arr.slice(0, i + 1).join('/'))}
                             className={`hover:text-nova-400 ${i === arr.length - 1 ? 'text-white font-medium' : 'text-surface-200/50'}`}>{seg}</button>
                     </span>
@@ -227,7 +229,7 @@ export default function FileManager() {
                 {/* File List Panel */}
                 <div className="w-80 border-r border-surface-700/30 overflow-auto bg-surface-900/30 flex-shrink-0">
                     {loading ? (
-                        <div className="flex items-center justify-center py-16"><Loader className="w-5 h-5 text-nova-500 animate-spin" /></div>
+                        <div className="flex items-center justify-center py-16"><Loader className="w-5 h-5 text-nova-400 animate-spin" /></div>
                     ) : (
                         <div className="py-1">{sorted.map(file => {
                             const fext = getExt(file.name);
@@ -239,12 +241,12 @@ export default function FileManager() {
                                     onContextMenu={e => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, file }); }}>
                                     <span className="text-xs w-5 text-center flex-shrink-0">{icon}</span>
                                     <span className={`truncate flex-1 ${file.is_dir ? 'text-white font-medium' : 'text-surface-200/70'}`}>{file.name}</span>
-                                    <span className="text-[10px] text-surface-200/20 flex-shrink-0">{file.is_dir ? '' : formatSize(file.size)}</span>
+                                    <span className="text-[10px] text-surface-200/40 flex-shrink-0">{file.is_dir ? '' : formatSize(file.size)}</span>
                                     <button onClick={e => { e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, file }); }}
-                                        className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-surface-700/50 text-surface-200/30"><MoreVertical className="w-3 h-3" /></button>
+                                        className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-surface-700/50 text-surface-200/50"><MoreVertical className="w-3 h-3" /></button>
                                 </div>
                             );
-                        })}{sorted.length === 0 && <p className="text-center text-surface-200/30 py-8 text-sm">Empty directory</p>}</div>
+                        })}{sorted.length === 0 && <p className="text-center text-surface-200/50 py-8 text-sm">Empty directory</p>}</div>
                     )}
                 </div>
 
@@ -268,7 +270,7 @@ export default function FileManager() {
                             {/* Line numbers */}
                             <div className="py-3 px-2 bg-surface-900/50 text-right select-none border-r border-surface-700/20 overflow-hidden">
                                 {Array.from({ length: lineCount }, (_, i) => (
-                                    <div key={i} className="text-[11px] leading-[20px] text-surface-200/20 font-mono pr-1">{i + 1}</div>
+                                    <div key={i} className="text-[11px] leading-[20px] text-surface-200/40 font-mono pr-1">{i + 1}</div>
                                 ))}
                             </div>
                             {/* Editor */}
@@ -277,7 +279,7 @@ export default function FileManager() {
                                 spellCheck={false} style={{ tabSize: 4 }} />
                         </div>
                     ) : (
-                        <div className="flex-1 flex items-center justify-center text-surface-200/20">
+                        <div className="flex-1 flex items-center justify-center text-surface-200/40">
                             <div className="text-center">
                                 <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
                                 <p className="text-sm">Select a file to edit</p>
@@ -288,7 +290,7 @@ export default function FileManager() {
 
                     {/* Status bar */}
                     {activeContent && (
-                        <div className="flex items-center justify-between px-3 py-1 bg-surface-800/80 border-t border-surface-700/20 text-[10px] text-surface-200/30">
+                        <div className="flex items-center justify-between px-3 py-1 bg-surface-800/80 border-t border-surface-700/20 text-[10px] text-surface-200/50">
                             <div className="flex items-center gap-3">
                                 <span>{lang.toUpperCase()}</span>
                                 <span>Lines: {lineCount}</span>
@@ -308,7 +310,10 @@ export default function FileManager() {
             {/* Context Menu */}
             {contextMenu && (
                 <div className="fixed z-[70] bg-surface-800 border border-surface-700/50 rounded-xl shadow-2xl py-1 min-w-[160px]"
-                    style={{ left: contextMenu.x, top: contextMenu.y }}>
+                    style={{
+                        left: Math.min(contextMenu.x, window.innerWidth - 180),
+                        top: Math.min(contextMenu.y, window.innerHeight - 220),
+                    }}>
                     {!contextMenu.file.is_dir && <button onClick={() => { openFile(contextMenu.file); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 text-xs text-surface-200/70 hover:bg-surface-700/50 flex items-center gap-2"><Edit3 className="w-3 h-3" /> Edit</button>}
                     <button onClick={() => { setShowRename(contextMenu.file); setRenameName(contextMenu.file.name); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 text-xs text-surface-200/70 hover:bg-surface-700/50 flex items-center gap-2"><Edit3 className="w-3 h-3" /> Rename</button>
                     <button onClick={() => { setShowChmod(contextMenu.file); setChmodValue(''); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 text-xs text-surface-200/70 hover:bg-surface-700/50 flex items-center gap-2"><Lock className="w-3 h-3" /> Permissions</button>

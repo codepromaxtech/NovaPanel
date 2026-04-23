@@ -1,13 +1,26 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/novapanel/novapanel/internal/models"
 )
+
+// writeAudit inserts a row into audit_logs. Errors are silently ignored.
+func writeAudit(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, action, resource, resourceID, ipAddress string, details map[string]interface{}) {
+	detailsJSON, _ := json.Marshal(details)
+	pool.Exec(ctx,
+		`INSERT INTO audit_logs (user_id, action, resource, resource_id, details, ip_address)
+		 VALUES ($1, $2, $3, NULLIF($4,'')::uuid, $5, NULLIF($6,'')::inet)`,
+		userID, action, resource, resourceID, detailsJSON, ipAddress,
+	)
+}
 
 type AuditHandler struct {
 	pool *pgxpool.Pool

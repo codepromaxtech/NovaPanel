@@ -50,7 +50,9 @@ func (h *BackupHandler) List(c *gin.Context) {
 
 func (h *BackupHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.service.Delete(c.Request.Context(), id); err != nil {
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
+	if err := h.service.Delete(c.Request.Context(), id, userID, role); err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
 		return
 	}

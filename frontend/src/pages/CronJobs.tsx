@@ -69,17 +69,17 @@ export default function CronJobs() {
                         const isComment = line.startsWith('#');
                         return (
                             <div key={i} className={`group flex items-center justify-between px-4 py-2.5 rounded-lg ${isComment ? 'bg-surface-800/30' : 'bg-surface-800/50 border border-surface-700/50'}`}>
-                                <pre className={`text-xs font-mono flex-1 ${isComment ? 'text-surface-200/30 italic' : 'text-surface-200/70'}`}>{line}</pre>
+                                <pre className={`text-xs font-mono flex-1 ${isComment ? 'text-surface-200/50 italic' : 'text-surface-200/70'}`}>{line}</pre>
                                 {!isComment && (
-                                    <button onClick={() => handleDelete(i + 1)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/30 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => handleDelete(i + 1)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
                                 )}
                             </div>
                         );
                     })}
-                    {lines.length === 0 && <p className="text-center text-surface-200/30 py-8">No cron jobs for user {user}</p>}
+                    {lines.length === 0 && <p className="text-center text-surface-200/50 py-8">No cron jobs for user {user}</p>}
                 </div>
             )}
-            {!server && <p className="text-center text-surface-200/30 py-12">Select a server to view cron jobs</p>}
+            {!server && <p className="text-center text-surface-200/50 py-12">Select a server to view cron jobs</p>}
 
             {showAdd && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAdd(false)}>
@@ -89,7 +89,7 @@ export default function CronJobs() {
                             <input value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} placeholder="Comment (optional)" className={inputCls} />
                             <input value={form.schedule} onChange={e => setForm({ ...form, schedule: e.target.value })} placeholder="Schedule (e.g. */5 * * * *)" className={inputCls + " font-mono"} />
                             <input value={form.command} onChange={e => setForm({ ...form, command: e.target.value })} placeholder="Command to run" className={inputCls + " font-mono"} />
-                            <div className="text-xs text-surface-200/30 bg-surface-900/50 rounded-lg p-3 font-mono space-y-1">
+                            <div className="text-xs text-surface-200/50 bg-surface-900/50 rounded-lg p-3 font-mono space-y-1">
                                 <p>┌───────── minute (0-59)</p>
                                 <p>│ ┌─────── hour (0-23)</p>
                                 <p>│ │ ┌───── day of month (1-31)</p>

@@ -245,7 +245,7 @@ export default function Docker() {
             {/* Search + Actions */}
             <div className="flex items-center gap-3">
                 <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-200/30" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-200/50" />
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${tab}...`}
                         className="w-full pl-10 pr-4 py-2.5 bg-surface-800/50 border border-surface-700/50 rounded-lg text-white text-sm focus:border-blue-500/50 focus:outline-none transition-colors" />
                 </div>
@@ -361,14 +361,14 @@ export default function Docker() {
                                         </div>
                                         <div>
                                             <div className="flex items-center justify-between text-xs mb-1"><span className="text-surface-200/40 flex items-center gap-1"><Activity className="w-3 h-3" /> PIDs</span><span className="text-amber-400">{s.pids}</span></div>
-                                            <div className="flex items-center gap-2 text-xs text-surface-200/30">IO: {fmtBytes(s.block_read)}R / {fmtBytes(s.block_write)}W</div>
+                                            <div className="flex items-center gap-2 text-xs text-surface-200/50">IO: {fmtBytes(s.block_read)}R / {fmtBytes(s.block_write)}W</div>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         );
                     })}
-                    {containers.length === 0 && <p className="text-center text-surface-200/30 py-8">No containers found</p>}
+                    {containers.length === 0 && <p className="text-center text-surface-200/50 py-8">No containers found</p>}
                 </div>
             )}
 
@@ -417,7 +417,7 @@ export default function Docker() {
                                 className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 opacity-60 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
                         </div>
                     ))}
-                    {images.length === 0 && <p className="text-center text-surface-200/30 py-8">No images found</p>}
+                    {images.length === 0 && <p className="text-center text-surface-200/50 py-8">No images found</p>}
                 </div>
             )}
 
@@ -444,7 +444,7 @@ export default function Docker() {
                             <button onClick={() => { if (confirm(`Remove volume "${vol.name}"? All data will be lost.`)) act(() => dockerService.removeVolume(vol.name)); }} title="Remove" className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 opacity-60 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
                         </div>
                     ))}
-                    {volumes.length === 0 && <p className="text-center text-surface-200/30 py-8">No volumes found</p>}
+                    {volumes.length === 0 && <p className="text-center text-surface-200/50 py-8">No volumes found</p>}
                 </div>
             )}
 
@@ -474,7 +474,7 @@ export default function Docker() {
                             )}
                         </div>
                     ))}
-                    {networks.length === 0 && <p className="text-center text-surface-200/30 py-8">No networks found</p>}
+                    {networks.length === 0 && <p className="text-center text-surface-200/50 py-8">No networks found</p>}
                 </div>
             )}
 
@@ -503,7 +503,7 @@ export default function Docker() {
                             <button onClick={() => { if (confirm(`Remove stack "${s.name}"? All associated containers will be stopped and removed.`)) act(() => dockerService.removeStack(s.name)); }} title="Remove" className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 opacity-60 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
                         </div>
                     ))}
-                    {stacks.length === 0 && <p className="text-center text-surface-200/30 py-4 text-sm">No stacks deployed</p>}
+                    {stacks.length === 0 && <p className="text-center text-surface-200/50 py-4 text-sm">No stacks deployed</p>}
                 </div>
             )}
 
@@ -522,7 +522,7 @@ export default function Docker() {
                                             <span className="text-2xl">{t.logo}</span>
                                             <div>
                                                 <p className="text-white font-medium text-sm group-hover:text-blue-400 transition-colors">{t.title}</p>
-                                                <p className="text-xs text-surface-200/30 font-mono">{t.image}</p>
+                                                <p className="text-xs text-surface-200/50 font-mono">{t.image}</p>
                                             </div>
                                         </div>
                                         <p className="text-xs text-surface-200/40 line-clamp-2">{t.description}</p>
@@ -585,7 +585,7 @@ export default function Docker() {
                         <button onClick={() => dockerService.getEvents('24h').then(setEvents)} className="text-xs text-blue-400 hover:underline">Refresh</button>
                     </div>
                     {events.length === 0 ? (
-                        <p className="text-center text-surface-200/30 py-8">No events found</p>
+                        <p className="text-center text-surface-200/50 py-8">No events found</p>
                     ) : (
                         <div className="bg-surface-800/50 border border-surface-700/50 rounded-xl overflow-hidden">
                             <table className="w-full text-sm">
@@ -661,7 +661,7 @@ export default function Docker() {
                         </div>
                         <div className="p-5 space-y-4">
                             <p className="text-sm text-surface-200/50">{templateDeploy.description}</p>
-                            <p className="text-xs text-surface-200/30 font-mono">Image: {templateDeploy.image}</p>
+                            <p className="text-xs text-surface-200/50 font-mono">Image: {templateDeploy.image}</p>
                             <input value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="Container name"
                                 className="w-full px-3 py-2 bg-surface-800/50 border border-surface-700/50 rounded-lg text-white text-sm focus:border-blue-500/50 focus:outline-none" />
                             {templateDeploy.env?.map(e => (
@@ -691,7 +691,7 @@ export default function Docker() {
                         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-700/50">
                             <h3 className="text-white font-semibold flex items-center gap-2">
                                 <FolderOpen className="w-4 h-4 text-indigo-400" /> Files: {fileModal.name}
-                                <span className="text-xs text-surface-200/30 font-mono ml-2">{fileModal.path}</span>
+                                <span className="text-xs text-surface-200/50 font-mono ml-2">{fileModal.path}</span>
                             </h3>
                             <button onClick={() => setFileModal(null)} className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white"><X className="w-4 h-4" /></button>
                         </div>
@@ -707,11 +707,11 @@ export default function Docker() {
                                     onClick={() => f.is_dir && browseContainer(fileModal.id, fileModal.name, f.path)}>
                                     {f.is_dir ? <FolderOpen className="w-4 h-4 text-amber-400 shrink-0" /> : <FileText className="w-4 h-4 text-surface-200/40 shrink-0" />}
                                     <span className={`text-sm flex-1 ${f.is_dir ? 'text-amber-400 font-medium' : 'text-white'}`}>{f.name}{f.is_dir ? '/' : ''}</span>
-                                    <span className="text-xs text-surface-200/30 font-mono">{f.mode}</span>
-                                    {!f.is_dir && <span className="text-xs text-surface-200/30">{fmtBytes(f.size)}</span>}
+                                    <span className="text-xs text-surface-200/50 font-mono">{f.mode}</span>
+                                    {!f.is_dir && <span className="text-xs text-surface-200/50">{fmtBytes(f.size)}</span>}
                                 </div>
                             ))}
-                            {fileModal.files.length === 0 && <p className="text-center text-surface-200/30 py-8">Empty directory</p>}
+                            {fileModal.files.length === 0 && <p className="text-center text-surface-200/50 py-8">Empty directory</p>}
                         </div>
                     </div>
                 </div>

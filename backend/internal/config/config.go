@@ -20,6 +20,22 @@ type Config struct {
 	JWTExpiry      time.Duration
 	AutomationURL  string
 	CORSOrigins    string
+	EncryptionKey  string
+	FrontendURL    string
+	IPWhitelist    string
+
+	// SMTP
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUser     string
+	SMTPPassword string
+	SMTPFrom     string
+
+	// Stripe
+	StripeSecretKey        string
+	StripeWebhookSecret    string
+	StripePriceEnterprise  string
+	StripePriceReseller    string
 }
 
 func Load() *Config {
@@ -38,6 +54,20 @@ func Load() *Config {
 		JWTExpiry:     parseDuration(getEnv("JWT_EXPIRY", "24h")),
 		AutomationURL: getEnv("AUTOMATION_URL", "http://localhost:8001"),
 		CORSOrigins:   getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"),
+		EncryptionKey: getEnv("ENCRYPTION_KEY", "novapanel-aes-key-change-in-prod!"),
+		FrontendURL:   getEnv("FRONTEND_URL", "http://localhost:3000"),
+		IPWhitelist:   getEnv("IP_WHITELIST", ""),
+
+		SMTPHost:     getEnv("SMTP_HOST", ""),
+		SMTPPort:     getEnv("SMTP_PORT", "587"),
+		SMTPUser:     getEnv("SMTP_USER", ""),
+		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:     getEnv("SMTP_FROM", "noreply@novapanel.io"),
+
+		StripeSecretKey:       getEnv("STRIPE_SECRET_KEY", ""),
+		StripeWebhookSecret:   getEnv("STRIPE_WEBHOOK_SECRET", ""),
+		StripePriceEnterprise: getEnv("STRIPE_PRICE_ENTERPRISE", ""),
+		StripePriceReseller:   getEnv("STRIPE_PRICE_RESELLER", ""),
 	}
 }
 

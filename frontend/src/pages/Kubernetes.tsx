@@ -221,11 +221,11 @@ export default function Kubernetes() {
                                         <span className={`text-[10px] px-1.5 py-0.5 rounded ${c.status === 'active' ? 'bg-green-500/10 text-green-400' : 'bg-yellow-500/10 text-yellow-400'}`}>{c.status}</span>
                                     </div>
                                 </div>
-                                <button onClick={() => handleDelete(c.id)} className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/20 hover:text-danger transition-colors opacity-0 group-hover:opacity-100">
+                                <button onClick={() => handleDelete(c.id)} className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/40 hover:text-danger transition-colors opacity-0 group-hover:opacity-100">
                                     <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                             </div>
-                            <p className="text-xs text-surface-200/30">{c.context_name || 'default context'}</p>
+                            <p className="text-xs text-surface-200/50">{c.context_name || 'default context'}</p>
                         </div>
                     ))}
                 </div>
@@ -284,7 +284,7 @@ export default function Kubernetes() {
                                                     {item.status || item.ready || (item.replicas !== undefined ? `${item.ready || 0}/${item.replicas}` : '-')}
                                                 </span>
                                             </td>
-                                            <td className="p-3 text-surface-200/30">{item.age || '-'}</td></>
+                                            <td className="p-3 text-surface-200/50">{item.age || '-'}</td></>
                                     )}
                                 </tr>
                             ))}

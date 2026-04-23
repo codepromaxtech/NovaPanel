@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useModalLock } from '../hooks/useModalLock';
 import {
     Globe, Plus, Search, Filter, MoreVertical, ExternalLink,
     Shield, CheckCircle, XCircle, AlertTriangle, Trash2, Edit, Eye, Loader,
@@ -18,6 +19,7 @@ export default function Domains() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [showAddModal, setShowAddModal] = useState(false);
+    useModalLock(showAddModal);
     const [newDomain, setNewDomain] = useState<{
         name: string;
         web_server: string;
@@ -86,6 +88,19 @@ export default function Domains() {
         }
     };
 
+    const [sslLoading, setSslLoading] = useState<string | null>(null);
+
+    const handleWildcardSSL = async (id: string) => {
+        setSslLoading(id);
+        try {
+            await domainService.provisionWildcardSSL(id);
+            toast.success('Wildcard SSL provisioning started — DNS challenge via Cloudflare');
+            loadDomains();
+        } catch {
+            toast.error('Wildcard SSL failed — ensure Cloudflare token is configured');
+        } finally { setSslLoading(null); }
+    };
+
     const [switchingPHP, setSwitchingPHP] = useState<string | null>(null);
 
     const handlePHPSwitch = async (domainId: string, version: string) => {
@@ -144,7 +159,7 @@ export default function Domains() {
             {/* Search & Filter */}
             <div className="flex gap-3">
                 <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-200/30" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-200/50" />
                     <input
                         type="text"
                         value={search}
@@ -188,7 +203,7 @@ export default function Domains() {
                         ) : filteredDomains.length === 0 ? (
                             <tr>
                                 <td colSpan={7} className="px-5 py-16 text-center">
-                                    <Globe className="w-12 h-12 text-surface-200/20 mx-auto mb-3" />
+                                    <Globe className="w-12 h-12 text-surface-200/40 mx-auto mb-3" />
                                     <p className="text-surface-200/40 text-sm">No domains found</p>
                                 </td>
                             </tr>
@@ -209,7 +224,7 @@ export default function Domains() {
                                                         </span>
                                                     )}
                                                 </p>
-                                                <p className="text-xs text-surface-200/30">{domain.document_root}</p>
+                                                <p className="text-xs text-surface-200/50">{domain.document_root}</p>
                                             </div>
                                         </div>
                                     </td>
@@ -220,7 +235,7 @@ export default function Domains() {
                                         <span className="text-sm text-surface-200/60 capitalize">{domain.web_server}</span>
                                     </td>
                                     <td className="px-5 py-4">
-                                        {domain.type === 'php' || domain.php_version ? (
+                                        {domain.php_version ? (
                                             <div className="flex items-center gap-1.5">
                                                 {switchingPHP === domain.id && <Loader className="w-3 h-3 text-purple-400 animate-spin" />}
                                                 <select
@@ -235,23 +250,30 @@ export default function Domains() {
                                                 </select>
                                             </div>
                                         ) : (
-                                            <span className="text-xs text-surface-200/20">—</span>
+                                            <span className="text-xs text-surface-200/40">—</span>
                                         )}
                                     </td>
                                     <td className="px-5 py-4">
                                         {domain.ssl_enabled ? (
                                             <Shield className="w-4 h-4 text-success" />
                                         ) : (
-                                            <Shield className="w-4 h-4 text-surface-200/20" />
+                                            <Shield className="w-4 h-4 text-surface-200/40" />
                                         )}
                                     </td>
                                     <td className="px-5 py-4">{statusBadge(domain.status)}</td>
                                     <td className="px-5 py-4">
                                         <div className="flex items-center justify-end gap-2">
-                                            <button className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white transition-colors">
+                                            <button className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white transition-colors" title="Visit domain">
                                                 <Eye className="w-4 h-4" />
                                             </button>
-                                            <button className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white transition-colors">
+                                            <button
+                                                onClick={() => handleWildcardSSL(domain.id)}
+                                                disabled={sslLoading === domain.id}
+                                                title="Provision Wildcard SSL"
+                                                className="p-1.5 rounded-lg hover:bg-nova-500/20 text-surface-200/40 hover:text-nova-400 transition-colors disabled:opacity-40">
+                                                {sslLoading === domain.id ? <Loader className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+                                            </button>
+                                            <button className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white transition-colors" title="Edit domain">
                                                 <Edit className="w-4 h-4" />
                                             </button>
                                             <button onClick={() => handleDeleteDomain(domain.id, domain.name)}

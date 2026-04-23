@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
 	"github.com/novapanel/novapanel/internal/provisioner"
 )
@@ -27,12 +28,30 @@ func NewDomainService(db *pgxpool.Pool) *DomainService {
 func (s *DomainService) getServerSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
 	var server provisioner.ServerInfo
 	var port int
+	var encKey, encPassword string
 	err := s.db.QueryRow(ctx,
 		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
+	if err != nil {
+		return server, err
+	}
 	server.Port = port
-	return server, err
+	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+		if encKey != "" {
+			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
+				encKey = dec
+			}
+		}
+		if encPassword != "" {
+			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
+				encPassword = dec
+			}
+		}
+	}
+	server.SSHKey = encKey
+	server.SSHPassword = encPassword
+	return server, nil
 }
 
 // ─── Vhost Config Generation ───
@@ -301,11 +320,23 @@ certbot certonly --non-interactive --agree-tos --register-unsafely-without-email
     --webroot --webroot-path '%s' \
     -d '%s' -d 'www.%s' 2>&1
 
-if [ $? -eq 0 ]; then
-    echo "SSL_ISSUED"
-else
+if [ $? -ne 0 ]; then
     echo "SSL_FAILED"
+    exit 1
 fi
+
+# Enable automatic renewal via systemd timer (preferred) or cron fallback
+if systemctl list-unit-files certbot.timer &>/dev/null; then
+    systemctl enable certbot.timer 2>&1
+    systemctl start certbot.timer 2>&1
+else
+    # Cron fallback: renew twice daily
+    CRON_JOB="0 */12 * * * root certbot renew --quiet --deploy-hook 'systemctl reload nginx'"
+    grep -qF "certbot renew" /etc/cron.d/certbot 2>/dev/null || \
+        echo "$CRON_JOB" > /etc/cron.d/certbot
+fi
+
+echo "SSL_ISSUED"
 `, domain.DocumentRoot, domain.Name, domain.Name)
 
 	output, err := provisioner.RunScript(server, script)
@@ -751,10 +782,15 @@ func (s *DomainService) Update(ctx context.Context, id string, req models.Update
 	return domain, nil
 }
 
-func (s *DomainService) Delete(ctx context.Context, id string) error {
+func (s *DomainService) Delete(ctx context.Context, id string, userID uuid.UUID, role string) error {
 	// Fetch the domain first so we can deprovision
 	domain, err := s.GetByID(ctx, id)
 	if err != nil {
+		return fmt.Errorf("domain not found")
+	}
+
+	// Ownership check — non-admins can only delete their own domains
+	if role != "admin" && domain.UserID != userID {
 		return fmt.Errorf("domain not found")
 	}
 
@@ -771,5 +807,71 @@ func (s *DomainService) Delete(ctx context.Context, id string) error {
 	if result.RowsAffected() == 0 {
 		return fmt.Errorf("domain not found")
 	}
+	return nil
+}
+
+// ProvisionWildcardSSL issues a wildcard TLS certificate via Certbot + Cloudflare DNS challenge.
+func (s *DomainService) ProvisionWildcardSSL(ctx context.Context, domainID string) error {
+	var domainName, serverIDStr string
+	var cfToken *string
+	err := s.db.QueryRow(ctx,
+		`SELECT d.name, d.server_id::text, COALESCE(ci.api_token, '')
+		 FROM domains d
+		 LEFT JOIN cloudflare_integrations ci ON ci.user_id = d.user_id
+		 WHERE d.id = $1`, domainID,
+	).Scan(&domainName, &serverIDStr, &cfToken)
+	if err != nil {
+		return fmt.Errorf("domain not found: %w", err)
+	}
+
+	srv, err := s.getServerSSH(ctx, serverIDStr)
+	if err != nil {
+		return fmt.Errorf("server not available: %w", err)
+	}
+
+	var adminEmail string
+	s.db.QueryRow(ctx, `SELECT email FROM users WHERE role = 'admin' LIMIT 1`).Scan(&adminEmail)
+	if adminEmail == "" {
+		adminEmail = "admin@" + domainName
+	}
+
+	cfAPIToken := ""
+	if cfToken != nil {
+		cfAPIToken = *cfToken
+	}
+	if cfAPIToken == "" {
+		return fmt.Errorf("Cloudflare API token required for wildcard SSL DNS challenge")
+	}
+
+	script := fmt.Sprintf(`
+set -e
+apt-get install -y certbot python3-certbot-dns-cloudflare 2>/dev/null || true
+mkdir -p /root/.secrets
+cat > /root/.secrets/cloudflare.ini << 'CFEOF'
+dns_cloudflare_api_token = %s
+CFEOF
+chmod 600 /root/.secrets/cloudflare.ini
+certbot certonly --dns-cloudflare \
+  --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
+  -d "*.%s" -d "%s" \
+  --non-interactive --agree-tos -m "%s" \
+  --preferred-challenges dns-01
+echo "WILDCARD_SSL_ISSUED"
+`, cfAPIToken, domainName, domainName, adminEmail)
+
+	out, err := provisioner.RunScript(srv, script)
+	if err != nil || !strings.Contains(out, "WILDCARD_SSL_ISSUED") {
+		return fmt.Errorf("wildcard SSL failed: %w\n%s", err, out)
+	}
+
+	// Update domain to ssl_enabled with wildcard cert paths
+	s.db.Exec(ctx,
+		`UPDATE domains SET ssl_enabled = true, ssl_certificate = $1, ssl_key = $2 WHERE id = $3`,
+		fmt.Sprintf("/etc/letsencrypt/live/%s/fullchain.pem", domainName),
+		fmt.Sprintf("/etc/letsencrypt/live/%s/privkey.pem", domainName),
+		domainID,
+	)
+
+	log.Printf("✅ Wildcard SSL issued for *.%s", domainName)
 	return nil
 }

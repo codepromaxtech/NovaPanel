@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useModalLock } from '../hooks/useModalLock';
 import { Database, Plus, Trash2, Search, HardDrive, Play, Table, Users, Download, Upload, ExternalLink, StopCircle, Loader, X, Terminal, Wrench } from 'lucide-react';
 import { databaseService } from '../services/databases';
 import { serverService } from '../services/servers';
@@ -30,6 +31,7 @@ export default function Databases() {
     const [servers, setServers] = useState<Server[]>([]);
     const [showCreate, setShowCreate] = useState(false);
     const [newDB, setNewDB] = useState({ name: '', engine: 'mysql', server_id: '' });
+    useModalLock(showCreate);
 
     // Query runner state
     const [qServer, setQServer] = useState('');
@@ -160,7 +162,7 @@ export default function Databases() {
                                 <button onClick={() => handleDelete(db.id)} className="p-2 rounded-lg hover:bg-red-500/20 text-surface-200/40 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
                             </div>
                         ))}
-                        {databases.length === 0 && <p className="text-center text-surface-200/30 py-12">No databases yet</p>}
+                        {databases.length === 0 && <p className="text-center text-surface-200/50 py-12">No databases yet</p>}
                     </div>
                 </div>
             )}
@@ -217,12 +219,12 @@ export default function Databases() {
                                             <button onClick={() => handleDeployTool(eng.value)} className={btnPrimary + " text-xs !px-3 !py-2"}>Deploy {eng.tool}</button>
                                         )}
                                     </div>
-                                    {isRunning && st?.url && <p className="text-xs text-surface-200/30 mt-2 font-mono">{st.url}</p>}
+                                    {isRunning && st?.url && <p className="text-xs text-surface-200/50 mt-2 font-mono">{st.url}</p>}
                                 </div>
                             );
                         })}
                     </div>
-                    {!toolServer && <p className="text-center text-surface-200/30 py-8">Select a server above to manage DB tools</p>}
+                    {!toolServer && <p className="text-center text-surface-200/50 py-8">Select a server above to manage DB tools</p>}
                 </div>
             )}
 

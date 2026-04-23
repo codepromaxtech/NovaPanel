@@ -106,7 +106,7 @@ export default function Dashboard() {
                     </div>
                     <div className="space-y-3">
                         {activity.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-10 text-surface-200/30">
+                            <div className="flex flex-col items-center justify-center py-10 text-surface-200/50">
                                 <Activity className="w-8 h-8 mb-2" />
                                 <p className="text-sm">No recent activity</p>
                             </div>
@@ -123,7 +123,7 @@ export default function Dashboard() {
                                         <p className="text-sm text-white font-medium">{item.action.replace('.', ' → ')}</p>
                                         <p className="text-xs text-surface-200/40 truncate">{item.resource_name}</p>
                                     </div>
-                                    <span className="text-xs text-surface-200/30 flex items-center gap-1">
+                                    <span className="text-xs text-surface-200/50 flex items-center gap-1">
                                         <Clock className="w-3 h-3" /> {timeAgo(item.created_at)}
                                     </span>
                                 </div>

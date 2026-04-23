@@ -3,18 +3,48 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
+	"github.com/novapanel/novapanel/internal/provisioner"
 )
 
 type SecurityService struct {
-	pool *pgxpool.Pool
+	pool      *pgxpool.Pool
+	cryptoKey []byte
 }
 
-func NewSecurityService(pool *pgxpool.Pool) *SecurityService {
-	return &SecurityService{pool: pool}
+func NewSecurityService(pool *pgxpool.Pool, encryptionKey string) *SecurityService {
+	return &SecurityService{pool: pool, cryptoKey: novacrypto.DeriveKey(encryptionKey)}
+}
+
+func (s *SecurityService) getServerSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
+	var srv provisioner.ServerInfo
+	var port int
+	var encKey, encPassword string
+	err := s.pool.QueryRow(ctx,
+		`SELECT host(ip_address), port, ssh_user,
+		        COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		 FROM servers WHERE id = $1`, serverID,
+	).Scan(&srv.IPAddress, &port, &srv.SSHUser, &encKey, &encPassword, &srv.AuthMethod)
+	if err != nil {
+		return srv, fmt.Errorf("server not found: %w", err)
+	}
+	srv.Port = port
+	if encKey != "" {
+		if dec, err := novacrypto.Decrypt(encKey, s.cryptoKey); err == nil {
+			srv.SSHKey = dec
+		}
+	}
+	if encPassword != "" {
+		if dec, err := novacrypto.Decrypt(encPassword, s.cryptoKey); err == nil {
+			srv.SSHPassword = dec
+		}
+	}
+	return srv, nil
 }
 
 func (s *SecurityService) CreateRule(ctx context.Context, req models.CreateFirewallRuleRequest) (*models.FirewallRule, error) {
@@ -45,17 +75,57 @@ func (s *SecurityService) CreateRule(ctx context.Context, req models.CreateFirew
 	if err != nil {
 		return nil, fmt.Errorf("failed to create firewall rule: %w", err)
 	}
+
+	// Apply rule via SSH asynchronously
+	go s.applyUFWRule(r)
 	return r, nil
 }
 
+func (s *SecurityService) applyUFWRule(r *models.FirewallRule) {
+	ctx := context.Background()
+	srv, err := s.getServerSSH(ctx, r.ServerID.String())
+	if err != nil {
+		log.Printf("firewall: SSH error for server %s: %v", r.ServerID, err)
+		return
+	}
+
+	fromClause := ""
+	if r.SourceIP != "any" {
+		fromClause = fmt.Sprintf("from %s ", r.SourceIP)
+	}
+	portClause := ""
+	if r.Port != "" && r.Port != "any" {
+		portClause = fmt.Sprintf("to any port %s proto %s", r.Port, r.Protocol)
+	}
+
+	script := fmt.Sprintf(`
+set -e
+which ufw || apt-get install -y ufw
+ufw --force enable 2>/dev/null || true
+ufw default deny incoming 2>/dev/null || true
+ufw default allow outgoing 2>/dev/null || true
+ufw allow 22/tcp 2>/dev/null || true
+ufw %s %s%s comment "np-%s" 2>/dev/null || true
+echo "UFW_APPLIED"
+`, r.Action, fromClause, portClause, r.ID)
+
+	out, err := provisioner.RunScript(srv, script)
+	if err != nil {
+		log.Printf("firewall apply error: %v — %s", err, out)
+	}
+}
+
 func (s *SecurityService) ListRules(ctx context.Context, serverID string) ([]models.FirewallRule, error) {
-	query := `SELECT id, server_id, direction, protocol, port, source_ip, action, description, is_active, created_at FROM firewall_rules`
+	var args []interface{}
+	query := `SELECT id, server_id, direction, protocol, port, source_ip, action, description, is_active, created_at
+	          FROM firewall_rules`
 	if serverID != "" {
-		query += fmt.Sprintf(` WHERE server_id = '%s'`, serverID)
+		args = append(args, serverID)
+		query += ` WHERE server_id = $1`
 	}
 	query += ` ORDER BY created_at DESC`
 
-	rows, err := s.pool.Query(ctx, query)
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -73,8 +143,38 @@ func (s *SecurityService) ListRules(ctx context.Context, serverID string) ([]mod
 }
 
 func (s *SecurityService) DeleteRule(ctx context.Context, id string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM firewall_rules WHERE id = $1`, id)
+	// Fetch rule details before deleting
+	var r models.FirewallRule
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, server_id, direction, protocol, port, source_ip, action FROM firewall_rules WHERE id = $1`, id,
+	).Scan(&r.ID, &r.ServerID, &r.Direction, &r.Protocol, &r.Port, &r.SourceIP, &r.Action)
+	if err == nil {
+		go s.removeUFWRule(&r)
+	}
+
+	_, err = s.pool.Exec(ctx, `DELETE FROM firewall_rules WHERE id = $1`, id)
 	return err
+}
+
+func (s *SecurityService) removeUFWRule(r *models.FirewallRule) {
+	ctx := context.Background()
+	srv, err := s.getServerSSH(ctx, r.ServerID.String())
+	if err != nil {
+		return
+	}
+
+	fromClause := ""
+	if r.SourceIP != "any" {
+		fromClause = fmt.Sprintf("from %s ", r.SourceIP)
+	}
+	portClause := ""
+	if r.Port != "" && r.Port != "any" {
+		portClause = fmt.Sprintf("to any port %s proto %s", r.Port, r.Protocol)
+	}
+
+	script := fmt.Sprintf(`ufw delete %s %s%s 2>/dev/null || true && echo "UFW_DELETED"`,
+		r.Action, fromClause, portClause)
+	provisioner.RunScript(srv, script)
 }
 
 func (s *SecurityService) ListEvents(ctx context.Context, page, perPage int) (*models.PaginatedResponse, error) {

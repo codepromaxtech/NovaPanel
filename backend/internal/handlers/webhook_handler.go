@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -22,6 +24,7 @@ import (
 type WebhookHandler struct {
 	pool      *pgxpool.Pool
 	deploySvc *services.DeployService
+	inFlight  sync.Map // app_id -> struct{}{} — prevents concurrent deploys for same app
 }
 
 func NewWebhookHandler(pool *pgxpool.Pool, deploySvc *services.DeployService) *WebhookHandler {
@@ -97,6 +100,13 @@ func (h *WebhookHandler) HandleGitHub(c *gin.Context) {
 		return
 	}
 
+	// Dedup: reject concurrent deployments for the same app (prevents GitHub retry races)
+	if _, loaded := h.inFlight.LoadOrStore(appID, struct{}{}); loaded {
+		c.JSON(http.StatusOK, gin.H{"message": "deployment already in progress, retry later"})
+		return
+	}
+	defer h.inFlight.Delete(appID)
+
 	// Trigger deployment
 	d, err := h.deploySvc.TriggerDeploy(c.Request.Context(), userID, models.CreateDeploymentRequest{
 		AppID:  appID,
@@ -104,10 +114,12 @@ func (h *WebhookHandler) HandleGitHub(c *gin.Context) {
 	})
 	if err != nil {
 		log.Printf("❌ Webhook deploy failed for app %s: %v", appID, err)
+		h.recordDelivery(appID, "push", body, 500, false)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "deployment failed"})
 		return
 	}
 
+	h.recordDelivery(appID, "push", body, 200, true)
 	log.Printf("✅ Webhook triggered deployment %s for app %s (branch: %s)", d.ID, appID, pushBranch)
 	c.JSON(http.StatusOK, gin.H{
 		"message":       "deployment triggered",
@@ -173,6 +185,13 @@ func (h *WebhookHandler) HandleGitLab(c *gin.Context) {
 		return
 	}
 
+	// Dedup: reject concurrent deployments for the same app
+	if _, loaded := h.inFlight.LoadOrStore(appID, struct{}{}); loaded {
+		c.JSON(http.StatusOK, gin.H{"message": "deployment already in progress, retry later"})
+		return
+	}
+	defer h.inFlight.Delete(appID)
+
 	// Trigger deployment
 	d, err := h.deploySvc.TriggerDeploy(c.Request.Context(), userID, models.CreateDeploymentRequest{
 		AppID:  appID,
@@ -180,16 +199,63 @@ func (h *WebhookHandler) HandleGitLab(c *gin.Context) {
 	})
 	if err != nil {
 		log.Printf("❌ GitLab webhook deploy failed for app %s: %v", appID, err)
+		h.recordDelivery(appID, "push", nil, 500, false)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "deployment failed"})
 		return
 	}
 
+	h.recordDelivery(appID, "push", nil, 200, true)
 	log.Printf("✅ GitLab webhook triggered deployment %s for app %s (branch: %s)", d.ID, appID, pushBranch)
 	c.JSON(http.StatusOK, gin.H{
 		"message":       "deployment triggered",
 		"deployment_id": d.ID,
 		"branch":        pushBranch,
 	})
+}
+
+// recordDelivery persists a webhook delivery record asynchronously.
+func (h *WebhookHandler) recordDelivery(appID, event string, payload []byte, code int, success bool) {
+	go func() {
+		h.pool.Exec(context.Background(),
+			`INSERT INTO webhook_deliveries (app_id, event, payload, response_code, success)
+			 VALUES ($1::uuid, $2, $3, $4, $5)`,
+			appID, event, payload, code, success)
+	}()
+}
+
+// ListDeliveries returns recent webhook delivery records for an app.
+// GET /api/v1/apps/:id/webhook-deliveries
+func (h *WebhookHandler) ListDeliveries(c *gin.Context) {
+	appID := c.Param("id")
+	rows, err := h.pool.Query(c.Request.Context(),
+		`SELECT id, app_id, event, response_code, duration_ms, delivered_at, success
+		 FROM webhook_deliveries WHERE app_id = $1::uuid
+		 ORDER BY delivered_at DESC LIMIT 50`, appID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type delivery struct {
+		ID           string  `json:"id"`
+		AppID        string  `json:"app_id"`
+		Event        string  `json:"event"`
+		ResponseCode int     `json:"response_code"`
+		DurationMs   *int    `json:"duration_ms"`
+		DeliveredAt  string  `json:"delivered_at"`
+		Success      bool    `json:"success"`
+	}
+	var deliveries []delivery
+	for rows.Next() {
+		var d delivery
+		if err := rows.Scan(&d.ID, &d.AppID, &d.Event, &d.ResponseCode,
+			&d.DurationMs, &d.DeliveredAt, &d.Success); err != nil {
+			continue
+		}
+		deliveries = append(deliveries, d)
+	}
+	c.JSON(http.StatusOK, gin.H{"data": deliveries})
 }
 
 // validateGitHubSignature checks the HMAC-SHA256 signature from GitHub

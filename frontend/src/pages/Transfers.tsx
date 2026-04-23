@@ -129,13 +129,13 @@ export default function Transfers() {
                                     <div>
                                         <div className="flex items-center gap-2">
                                             <span className="text-white font-medium text-sm">{serverName(j.source_server_id)}</span>
-                                            <ArrowRightLeft className="w-3.5 h-3.5 text-surface-200/30" />
+                                            <ArrowRightLeft className="w-3.5 h-3.5 text-surface-200/50" />
                                             <span className="text-white font-medium text-sm">{serverName(j.dest_server_id)}</span>
                                             {statusBadge(j.status)}
                                             {j.dry_run && <span className="px-2 py-0.5 rounded-full text-xs bg-purple-500/20 text-purple-400">dry-run</span>}
                                         </div>
                                         <p className="text-xs text-surface-200/40 mt-0.5">{j.source_path} → {j.dest_path}</p>
-                                        <p className="text-xs text-surface-200/30">{j.direction} · {new Date(j.created_at).toLocaleString()}</p>
+                                        <p className="text-xs text-surface-200/50">{j.direction} · {new Date(j.created_at).toLocaleString()}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -152,7 +152,7 @@ export default function Transfers() {
                             )}
                         </div>
                     ))}
-                    {jobs.length === 0 && <p className="text-center text-surface-200/30 py-16">No transfer jobs yet — start one from the "New Transfer" tab</p>}
+                    {jobs.length === 0 && <p className="text-center text-surface-200/50 py-16">No transfer jobs yet — start one from the "New Transfer" tab</p>}
                 </div>
             )}
 
@@ -214,23 +214,23 @@ export default function Transfers() {
                             <div key={s.id} className="group flex items-center justify-between bg-surface-800/50 border border-surface-700/50 rounded-xl p-4 hover:border-surface-700 transition-colors">
                                 <div className="flex items-center gap-3">
                                     <div className={`p-2 rounded-lg border ${s.is_active ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-surface-700/30 border-surface-700/50'}`}>
-                                        <Calendar className={`w-4 h-4 ${s.is_active ? 'text-emerald-400' : 'text-surface-200/30'}`} />
+                                        <Calendar className={`w-4 h-4 ${s.is_active ? 'text-emerald-400' : 'text-surface-200/50'}`} />
                                     </div>
                                     <div>
                                         <p className="text-white font-medium text-sm">{s.name}</p>
                                         <p className="text-xs text-surface-200/40">{s.source_path} → {s.dest_path} · cron: <code className="text-cyan-400">{s.cron_expression}</code></p>
-                                        {s.last_run && <p className="text-xs text-surface-200/30">Last: {new Date(s.last_run).toLocaleString()}</p>}
+                                        {s.last_run && <p className="text-xs text-surface-200/50">Last: {new Date(s.last_run).toLocaleString()}</p>}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <button onClick={() => handleToggleSchedule(s.id, s.is_active)} className="p-1">
-                                        {s.is_active ? <ToggleRight className="w-7 h-7 text-emerald-400" /> : <ToggleLeft className="w-7 h-7 text-surface-200/30" />}
+                                    <button onClick={() => handleToggleSchedule(s.id, s.is_active)} className="p-1" aria-label={s.is_active ? 'Disable schedule' : 'Enable schedule'} aria-pressed={s.is_active}>
+                                        {s.is_active ? <ToggleRight className="w-7 h-7 text-emerald-400" /> : <ToggleLeft className="w-7 h-7 text-surface-200/50" />}
                                     </button>
                                     <button onClick={() => handleDeleteSchedule(s.id)} className="p-2 rounded-lg hover:bg-red-500/20 text-surface-200/40 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
                                 </div>
                             </div>
                         ))}
-                        {schedules.length === 0 && <p className="text-center text-surface-200/30 py-12">No scheduled transfers</p>}
+                        {schedules.length === 0 && <p className="text-center text-surface-200/50 py-12">No scheduled transfers</p>}
                     </div>
                 </div>
             )}

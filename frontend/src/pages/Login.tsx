@@ -1,11 +1,12 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Mail, Lock, User, ArrowRight, Eye, EyeOff, Shield, Server, Activity, Globe } from 'lucide-react';
+import { Zap, Mail, Lock, User, ArrowRight, Eye, EyeOff, Shield, Server, Activity, Globe, Check } from 'lucide-react';
 import { authService } from '../services/auth';
 import { useAuthStore } from '../store/authStore';
 
 export default function Login() {
     const [isLogin, setIsLogin] = useState(true);
+    const [mode, setMode] = useState<'auth' | 'forgot' | 'totp'>('auth');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [firstName, setFirstName] = useState('');
@@ -13,6 +14,8 @@ export default function Login() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [forgotSent, setForgotSent] = useState(false);
+    const [totpCode, setTotpCode] = useState('');
     const navigate = useNavigate();
     const { setAuth } = useAuthStore();
 
@@ -27,10 +30,44 @@ export default function Login() {
             } else {
                 res = await authService.register(email, password, firstName, lastName);
             }
+            if ((res as any).two_factor_required) {
+                setMode('totp');
+                setLoading(false);
+                return;
+            }
             setAuth(res.user, res.token);
             navigate('/');
         } catch (err: any) {
             setError(err.response?.data?.error || 'Authentication failed. Please check your credentials.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleForgot = async (e: FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        try {
+            await authService.forgotPassword(email);
+            setForgotSent(true);
+        } catch (err: any) {
+            setError(err.response?.data?.error || 'Failed to send reset email.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleTotpVerify = async (e: FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        try {
+            const res = await authService.totpVerify(email, totpCode);
+            setAuth(res.user, res.token);
+            navigate('/');
+        } catch (err: any) {
+            setError(err.response?.data?.error || 'Invalid code.');
         } finally {
             setLoading(false);
         }
@@ -123,11 +160,12 @@ export default function Login() {
 
                     <div className="mb-10 text-center lg:text-left">
                         <h2 className="text-3xl font-bold text-white mb-3">
-                            {isLogin ? 'Welcome back' : 'Create an account'}
+                            {mode === 'forgot' ? 'Reset Password' : mode === 'totp' ? 'Two-Factor Auth' : isLogin ? 'Welcome back' : 'Create an account'}
                         </h2>
                         <p className="text-surface-200/60 text-base">
-                            {isLogin
-                                ? 'Enter your credentials to access your control plane.'
+                            {mode === 'forgot' ? 'Enter your email and we\'ll send you a reset link.'
+                                : mode === 'totp' ? 'Enter the 6-digit code from your authenticator app.'
+                                : isLogin ? 'Enter your credentials to access your control plane.'
                                 : 'Join the next generation of server management.'}
                         </p>
                     </div>
@@ -139,7 +177,60 @@ export default function Login() {
                         </div>
                     )}
 
-                    <form onSubmit={handleSubmit} className="space-y-6">
+                    {/* Forgot Password Form */}
+                    {mode === 'forgot' && (
+                        <form onSubmit={handleForgot} className="space-y-6">
+                            {forgotSent ? (
+                                <div className="p-4 rounded-xl bg-success/10 border border-success/20 text-success text-sm flex items-center gap-3">
+                                    <Check className="w-5 h-5 flex-shrink-0" />
+                                    Check your inbox — a reset link has been sent to {email}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-medium text-surface-200">Email Address</label>
+                                    <div className="relative group">
+                                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-200/40 group-focus-within:text-nova-400 transition-colors" />
+                                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+                                            className="block w-full pl-11 pr-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/20"
+                                            placeholder="admin@company.com" />
+                                    </div>
+                                </div>
+                            )}
+                            {!forgotSent && (
+                                <button type="submit" disabled={loading}
+                                    className="w-full rounded-xl bg-gradient-to-r from-nova-600 to-nova-700 py-3.5 px-4 text-sm font-semibold text-white shadow-lg hover:shadow-nova-500/40 transition-all flex items-center justify-center gap-2 disabled:opacity-70">
+                                    {loading ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <><ArrowRight className="w-4 h-4" /> Send Reset Link</>}
+                                </button>
+                            )}
+                            <button type="button" onClick={() => { setMode('auth'); setForgotSent(false); setError(''); }}
+                                className="w-full text-sm text-surface-200/60 hover:text-white transition-colors">
+                                ← Back to sign in
+                            </button>
+                        </form>
+                    )}
+
+                    {/* TOTP Verify Form */}
+                    {mode === 'totp' && (
+                        <form onSubmit={handleTotpVerify} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-surface-200">Authentication Code</label>
+                                <input type="text" value={totpCode} onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                    className="block w-full text-center tracking-[0.5em] text-xl px-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all"
+                                    placeholder="000000" maxLength={6} autoFocus required />
+                                <p className="text-xs text-surface-200/40">Enter the code from your authenticator app, or a backup code.</p>
+                            </div>
+                            <button type="submit" disabled={loading || totpCode.length < 6}
+                                className="w-full rounded-xl bg-gradient-to-r from-nova-600 to-nova-700 py-3.5 px-4 text-sm font-semibold text-white shadow-lg hover:shadow-nova-500/40 transition-all flex items-center justify-center gap-2 disabled:opacity-70">
+                                {loading ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <><Shield className="w-4 h-4" /> Verify</>}
+                            </button>
+                            <button type="button" onClick={() => { setMode('auth'); setTotpCode(''); setError(''); }}
+                                className="w-full text-sm text-surface-200/60 hover:text-white transition-colors">
+                                ← Use a different account
+                            </button>
+                        </form>
+                    )}
+
+                    {mode === 'auth' && <form onSubmit={handleSubmit} className="space-y-6">
                         {!isLogin && (
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
@@ -195,9 +286,10 @@ export default function Login() {
                             <div className="flex items-center justify-between">
                                 <label className="block text-sm font-medium text-surface-200">Password</label>
                                 {isLogin && (
-                                    <a href="#" className="text-sm font-medium text-nova-400 hover:text-nova-300 transition-colors">
+                                    <button type="button" onClick={() => { setMode('forgot'); setError(''); }}
+                                        className="text-sm font-medium text-nova-400 hover:text-nova-300 transition-colors">
                                         Forgot password?
-                                    </a>
+                                    </button>
                                 )}
                             </div>
                             <div className="relative group">
@@ -241,9 +333,9 @@ export default function Login() {
                                 </div>
                             )}
                         </button>
-                    </form>
+                    </form>}
 
-                    <div className="mt-8 pt-8 border-t border-white/10 text-center">
+                    {mode === 'auth' && <div className="mt-8 pt-8 border-t border-white/10 text-center">
                         <p className="text-sm text-surface-200/60">
                             {isLogin ? "New to NovaPanel?" : "Already managing servers?"}{' '}
                             <button
@@ -253,7 +345,7 @@ export default function Login() {
                                 {isLogin ? 'Create an account' : 'Sign in here'}
                             </button>
                         </p>
-                    </div>
+                    </div>}
                 </div>
             </div>
         </div>

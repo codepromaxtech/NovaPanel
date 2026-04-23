@@ -246,18 +246,18 @@ export default function Deployments() {
                                     </div>
                                     <div className="flex items-center gap-1">
                                         <button onClick={() => { setShowDeploy(true); setDeployAppId(app.id); setDeployBranch(app.git_branch || 'main'); }}
-                                            className="p-1.5 rounded-lg hover:bg-nova-500/10 text-surface-200/20 hover:text-nova-400 transition-colors opacity-0 group-hover:opacity-100"
+                                            className="p-1.5 rounded-lg hover:bg-nova-500/10 text-surface-200/40 hover:text-nova-400 transition-colors opacity-0 group-hover:opacity-100"
                                             title="Deploy">
                                             <Play className="w-3.5 h-3.5" />
                                         </button>
                                         <button onClick={() => handleDeleteApp(app.id)}
-                                            className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/20 hover:text-danger transition-colors opacity-0 group-hover:opacity-100"
+                                            className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/40 hover:text-danger transition-colors opacity-0 group-hover:opacity-100"
                                             title="Delete">
                                             <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-3 text-xs text-surface-200/30">
+                                <div className="flex items-center gap-3 text-xs text-surface-200/50">
                                     {app.git_repo && (
                                         <span className="flex items-center gap-1 truncate max-w-[60%]">
                                             <GitBranch className="w-3 h-3 flex-shrink-0" /> {app.git_repo.replace(/^https?:\/\/github\.com\//, '')}
@@ -275,7 +275,7 @@ export default function Deployments() {
 
             {/* ─── Deployment History ─── */}
             {loading ? (
-                <div className="flex items-center justify-center py-20"><Loader className="w-6 h-6 text-nova-500 animate-spin" /></div>
+                <div className="flex items-center justify-center py-20"><Loader className="w-6 h-6 text-nova-400 animate-spin" /></div>
             ) : deploys.length === 0 && apps.length === 0 ? (
                 <div className="glass-card rounded-2xl flex flex-col items-center justify-center py-20 text-surface-200/40">
                     <Rocket className="w-16 h-16 mb-4 opacity-40" />
@@ -310,12 +310,12 @@ export default function Deployments() {
                                                         <GitBranch className="w-3 h-3" /> {d.branch}
                                                     </span>
                                                     {d.commit_hash && (
-                                                        <span className="text-xs font-mono text-surface-200/30">{d.commit_hash}</span>
+                                                        <span className="text-xs font-mono text-surface-200/50">{d.commit_hash}</span>
                                                     )}
                                                 </div>
                                                 <div className="flex items-center gap-3 mt-0.5">
                                                     <span className={`text-xs font-medium ${color}`}>{d.status}</span>
-                                                    <span className="text-[10px] text-surface-200/20">
+                                                    <span className="text-[10px] text-surface-200/40">
                                                         {d.created_at ? new Date(d.created_at).toLocaleString() : ''}
                                                     </span>
                                                 </div>
@@ -334,7 +334,7 @@ export default function Deployments() {
                                                     <RotateCcw className="w-3 h-3" /> Redeploy
                                                 </button>
                                             )}
-                                            <ChevronDown className={`w-4 h-4 text-surface-200/30 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                            <ChevronDown className={`w-4 h-4 text-surface-200/50 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                         </div>
                                     </div>
                                     {isExpanded && (

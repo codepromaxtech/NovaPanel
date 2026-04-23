@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/provisioner"
 )
 
@@ -18,16 +19,35 @@ func NewDBManagerService(pool *pgxpool.Pool) *DBManagerService {
 	return &DBManagerService{pool: pool}
 }
 
-// getServerSSH gets SSH connection info for a server
+// getServerSSH gets decrypted SSH connection info for a server
 func (s *DBManagerService) getServerSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
 	var server provisioner.ServerInfo
 	var port int
+	var encKey, encPassword string
 	err := s.pool.QueryRow(ctx,
-		`SELECT ip_address, port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
+	if err != nil {
+		return server, err
+	}
 	server.Port = port
-	return server, err
+
+	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+		if encKey != "" {
+			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
+				encKey = dec
+			}
+		}
+		if encPassword != "" {
+			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
+				encPassword = dec
+			}
+		}
+	}
+	server.SSHKey = encKey
+	server.SSHPassword = encPassword
+	return server, nil
 }
 
 // RunQuery executes a SQL query on a remote server database via SSH
@@ -37,10 +57,16 @@ func (s *DBManagerService) RunQuery(ctx context.Context, serverID, engine, dbNam
 		return "", fmt.Errorf("server not found: %w", err)
 	}
 
-	// Sanitize — prevent dangerous operations in the simple query runner
+	// Block destructive DDL operations in the ad-hoc query runner.
 	upperQ := strings.ToUpper(strings.TrimSpace(query))
-	if strings.HasPrefix(upperQ, "DROP DATABASE") || strings.HasPrefix(upperQ, "DROP USER") {
-		return "", fmt.Errorf("dangerous operation blocked — use the panel to manage databases")
+	blocked := []string{
+		"DROP DATABASE", "DROP USER", "DROP TABLE", "DROP SCHEMA",
+		"TRUNCATE TABLE", "TRUNCATE ",
+	}
+	for _, b := range blocked {
+		if strings.HasPrefix(upperQ, b) {
+			return "", fmt.Errorf("dangerous operation blocked — use the panel to manage databases")
+		}
 	}
 
 	var cmd string

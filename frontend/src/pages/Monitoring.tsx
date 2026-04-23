@@ -57,7 +57,7 @@ function GaugeCard({ label, value, max, unit, icon: Icon, color }: {
                     style={{ width: `${Math.min(pct, 100)}%` }} />
             </div>
             <div className="text-right mt-1">
-                <span className="text-xs text-surface-200/30">{pct.toFixed(1)}%</span>
+                <span className="text-xs text-surface-200/50">{pct.toFixed(1)}%</span>
             </div>
         </div>
     );
@@ -121,7 +121,7 @@ export default function Monitoring() {
     if (loading) {
         return (
             <div className="flex items-center justify-center py-20">
-                <Loader className="w-6 h-6 text-nova-500 animate-spin" />
+                <Loader className="w-6 h-6 text-nova-400 animate-spin" />
             </div>
         );
     }

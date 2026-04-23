@@ -3,19 +3,137 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
+	"github.com/novapanel/novapanel/internal/provisioner"
 )
 
 type BackupService struct {
-	pool *pgxpool.Pool
+	pool      *pgxpool.Pool
+	cryptoKey []byte
 }
 
-func NewBackupService(pool *pgxpool.Pool) *BackupService {
-	return &BackupService{pool: pool}
+func NewBackupService(pool *pgxpool.Pool, encryptionKey string) *BackupService {
+	return &BackupService{pool: pool, cryptoKey: novacrypto.DeriveKey(encryptionKey)}
+}
+
+func (s *BackupService) getServerSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
+	var srv provisioner.ServerInfo
+	var port int
+	var encKey, encPassword string
+	err := s.pool.QueryRow(ctx,
+		`SELECT host(ip_address), port, ssh_user,
+		        COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		 FROM servers WHERE id = $1`, serverID,
+	).Scan(&srv.IPAddress, &port, &srv.SSHUser, &encKey, &encPassword, &srv.AuthMethod)
+	if err != nil {
+		return srv, fmt.Errorf("server not found: %w", err)
+	}
+	srv.Port = port
+	if encKey != "" {
+		if dec, err := novacrypto.Decrypt(encKey, s.cryptoKey); err == nil {
+			srv.SSHKey = dec
+		}
+	}
+	if encPassword != "" {
+		if dec, err := novacrypto.Decrypt(encPassword, s.cryptoKey); err == nil {
+			srv.SSHPassword = dec
+		}
+	}
+	return srv, nil
+}
+
+// RunDueSchedules executes any backup schedules whose next_run_at has passed.
+func (s *BackupService) RunDueSchedules(ctx context.Context) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, user_id, server_id, type, storage, frequency, retention_days
+		 FROM backup_schedules WHERE is_active = true AND next_run_at <= NOW()`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id, freq, btype, storage string
+		var userID uuid.UUID
+		var serverID *uuid.UUID
+		var retention int
+		if err := rows.Scan(&id, &userID, &serverID, &btype, &storage, &freq, &retention); err != nil {
+			continue
+		}
+		go s.executeScheduledBackup(id, userID, serverID, btype, storage, freq, retention)
+	}
+}
+
+func (s *BackupService) executeScheduledBackup(scheduleID string, userID uuid.UUID, serverID *uuid.UUID, btype, storage, freq string, retention int) {
+	ctx := context.Background()
+	timestamp := time.Now().Format("20060102-150405")
+
+	// Create a backup record
+	var backupID string
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO backups (user_id, server_id, type, storage, status, started_at)
+		 VALUES ($1, $2, $3, $4, 'running', NOW())
+		 RETURNING id`, userID, serverID, btype, storage,
+	).Scan(&backupID)
+	if err != nil {
+		log.Printf("backup schedule %s: failed to create record: %v", scheduleID, err)
+		return
+	}
+
+	backupPath := fmt.Sprintf("/var/backups/novapanel/%s-%s.tar.gz", scheduleID, timestamp)
+
+	if serverID != nil {
+		srv, err := s.getServerSSH(ctx, serverID.String())
+		if err == nil {
+			script := fmt.Sprintf(`
+mkdir -p /var/backups/novapanel
+tar -czf %s /var/www 2>/dev/null
+SIZE=$(stat -c%%s %s 2>/dev/null || echo 0)
+echo "BACKUP_SIZE=${SIZE}"
+`, backupPath, backupPath)
+			out, err := provisioner.RunScript(srv, script)
+			status := "completed"
+			if err != nil {
+				status = "failed"
+				log.Printf("backup schedule %s execution error: %v — %s", scheduleID, err, out)
+			}
+			s.pool.Exec(ctx,
+				`UPDATE backups SET status = $1, path = $2, completed_at = NOW() WHERE id = $3`,
+				status, backupPath, backupID)
+		}
+	}
+
+	// Compute next run based on frequency
+	nextRun := nextRunTime(freq)
+	s.pool.Exec(ctx,
+		`UPDATE backup_schedules SET last_run_at = NOW(), next_run_at = $1 WHERE id = $2`,
+		nextRun, scheduleID)
+
+	// Prune old backups
+	s.pool.Exec(ctx,
+		`DELETE FROM backups WHERE user_id = $1 AND server_id = $2 AND created_at < NOW() - ($3 || ' days')::INTERVAL`,
+		userID, serverID, retention)
+}
+
+func nextRunTime(freq string) time.Time {
+	now := time.Now()
+	switch freq {
+	case "hourly":
+		return now.Add(time.Hour)
+	case "weekly":
+		return now.Add(7 * 24 * time.Hour)
+	case "monthly":
+		return now.AddDate(0, 1, 0)
+	default: // daily
+		return now.Add(24 * time.Hour)
+	}
 }
 
 func (s *BackupService) Create(ctx context.Context, userID uuid.UUID, req models.CreateBackupRequest) (*models.Backup, error) {
@@ -57,16 +175,18 @@ func (s *BackupService) List(ctx context.Context, userID uuid.UUID, role string,
 
 	query := `SELECT id, user_id, server_id, type, storage, path, size_mb, status, started_at, completed_at, expires_at, created_at FROM backups`
 	countQuery := `SELECT count(*) FROM backups`
+	var args []interface{}
 
 	if role != "admin" {
-		query += fmt.Sprintf(` WHERE user_id = '%s'`, userID)
-		countQuery += fmt.Sprintf(` WHERE user_id = '%s'`, userID)
+		args = append(args, userID)
+		query += ` WHERE user_id = $1`
+		countQuery += ` WHERE user_id = $1`
 	}
 
-	s.pool.QueryRow(ctx, countQuery).Scan(&total)
+	s.pool.QueryRow(ctx, countQuery, args...).Scan(&total)
 	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT %d OFFSET %d`, perPage, offset)
 
-	rows, err := s.pool.Query(ctx, query)
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +210,15 @@ func (s *BackupService) List(ctx context.Context, userID uuid.UUID, role string,
 	}, nil
 }
 
-func (s *BackupService) Delete(ctx context.Context, id string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM backups WHERE id = $1`, id)
+func (s *BackupService) Delete(ctx context.Context, id string, userID uuid.UUID, role string) error {
+	var ownerID uuid.UUID
+	err := s.pool.QueryRow(ctx, `SELECT user_id FROM backups WHERE id = $1`, id).Scan(&ownerID)
+	if err != nil {
+		return fmt.Errorf("backup not found")
+	}
+	if role != "admin" && ownerID != userID {
+		return fmt.Errorf("backup not found")
+	}
+	_, err = s.pool.Exec(ctx, `DELETE FROM backups WHERE id = $1`, id)
 	return err
 }

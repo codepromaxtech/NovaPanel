@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -48,8 +49,14 @@ func (h *SettingsHandler) UpdateProfile(c *gin.Context) {
 	userID := c.MustGet("user_id").(uuid.UUID)
 
 	if req.Name != "" {
+		parts := strings.SplitN(strings.TrimSpace(req.Name), " ", 2)
+		firstName := parts[0]
+		lastName := ""
+		if len(parts) > 1 {
+			lastName = parts[1]
+		}
 		if _, err := h.pool.Exec(c.Request.Context(),
-			`UPDATE users SET first_name = $1 WHERE id = $2`, req.Name, userID); err != nil {
+			`UPDATE users SET first_name = $1, last_name = $2 WHERE id = $3`, firstName, lastName, userID); err != nil {
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to update name"})
 			return
 		}

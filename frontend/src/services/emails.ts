@@ -79,4 +79,17 @@ export const emailService = {
     async setCatchAll(domainId: string, address: string) {
         await api.put(`/emails/catchall/${domainId}`, { address });
     },
+
+    // ──── Webmail ────
+    async deployWebmail(serverId: string) {
+        const { data } = await api.post('/emails/webmail/deploy', { server_id: serverId });
+        return data;
+    },
+    async webmailStatus(serverId: string) {
+        const { data } = await api.get('/emails/webmail/status', { params: { server_id: serverId } });
+        return data;
+    },
+    async stopWebmail(serverId: string) {
+        await api.post('/emails/webmail/stop', { server_id: serverId });
+    },
 };

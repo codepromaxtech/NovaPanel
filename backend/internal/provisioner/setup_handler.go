@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 )
 
 // SetupHandler processes "server_setup" tasks from the queue.
@@ -44,15 +45,32 @@ func (h *SetupHandler) Handle(ctx context.Context, payload map[string]interface{
 	// Get server SSH info
 	var server ServerInfo
 	var port int
+	var encKey, encPassword string
 	err := h.db.QueryRow(ctx,
-		`SELECT ip_address, port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
 	if err != nil {
 		h.db.Exec(ctx, `UPDATE servers SET setup_status = 'failed' WHERE id = $1`, serverID)
 		return nil, fmt.Errorf("failed to get server info: %w", err)
 	}
 	server.Port = port
+
+	// Decrypt SSH credentials stored encrypted in the database
+	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+		if encKey != "" {
+			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
+				encKey = dec
+			}
+		}
+		if encPassword != "" {
+			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
+				encPassword = dec
+			}
+		}
+	}
+	server.SSHKey = encKey
+	server.SSHPassword = encPassword
 
 	// Create initial setup_logs entries (all pending)
 	for _, mod := range modules {

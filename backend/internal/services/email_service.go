@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"net"
 	"strings"
@@ -10,7 +11,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
+	"github.com/novapanel/novapanel/internal/provisioner"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -46,6 +49,54 @@ func (s *EmailService) CreateAccount(ctx context.Context, userID uuid.UUID, req 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create email account: %w", err)
 	}
+
+	// Provision the mailbox on the actual mail server
+	go func() {
+		bgCtx := context.Background()
+		var serverID *uuid.UUID
+		var domainName string
+		if err := s.pool.QueryRow(bgCtx,
+			`SELECT server_id, name FROM domains WHERE id = $1`, req.DomainID,
+		).Scan(&serverID, &domainName); err != nil || serverID == nil {
+			log.Printf("⚠ Email %s: no server found for domain, skipping mail provisioning", req.Address)
+			return
+		}
+		srv, err := s.getServerSSH(bgCtx, serverID.String())
+		if err != nil {
+			log.Printf("⚠ Email %s: could not get server SSH info: %v", req.Address, err)
+			return
+		}
+		localpart := strings.SplitN(req.Address, "@", 2)[0]
+		script := fmt.Sprintf(`
+# Postfix virtual mailbox entry
+VMAILBOX=/etc/postfix/vmailbox
+grep -qF '%s' "$VMAILBOX" 2>/dev/null || echo '%s %s/Maildir/' >> "$VMAILBOX"
+postmap "$VMAILBOX" 2>&1
+
+# Dovecot passwd-file entry (plain password — Dovecot hashes at auth time)
+PASSWDFILE=/etc/dovecot/users
+grep -qF '%s@%s' "$PASSWDFILE" 2>/dev/null || \
+    echo '%s@%s:{PLAIN}%s:vmail:vmail::' >> "$PASSWDFILE" 2>&1
+
+# Create Maildir structure
+install -d -o vmail -g vmail -m 700 /var/vmail/%s/%s/Maildir/{new,cur,tmp} 2>&1 || true
+
+# Reload services
+postfix reload 2>&1 || true
+doveadm reload 2>&1 || true
+echo "MAIL_PROVISIONED"
+`, req.Address, req.Address, domainName,
+			localpart, domainName,
+			localpart, domainName, req.Password,
+			domainName, localpart)
+		output, err := provisioner.RunScript(srv, script)
+		if err != nil || !strings.Contains(output, "MAIL_PROVISIONED") {
+			log.Printf("⚠ Email %s: mail server provisioning warning: %v\n%s", req.Address, err, output)
+		} else {
+			log.Printf("✅ Email %s: provisioned on mail server", req.Address)
+		}
+	}()
+
 	return acct, nil
 }
 
@@ -55,16 +106,18 @@ func (s *EmailService) ListAccounts(ctx context.Context, userID uuid.UUID, role 
 
 	query := `SELECT id, domain_id, user_id, address, quota_mb, used_mb, is_active, created_at, updated_at FROM email_accounts`
 	countQuery := `SELECT count(*) FROM email_accounts`
+	var args []interface{}
 
 	if role != "admin" {
-		query += fmt.Sprintf(` WHERE user_id = '%s'`, userID)
-		countQuery += fmt.Sprintf(` WHERE user_id = '%s'`, userID)
+		args = append(args, userID)
+		query += ` WHERE user_id = $1`
+		countQuery += ` WHERE user_id = $1`
 	}
 
-	s.pool.QueryRow(ctx, countQuery).Scan(&total)
+	s.pool.QueryRow(ctx, countQuery, args...).Scan(&total)
 	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT %d OFFSET %d`, perPage, offset)
 
-	rows, err := s.pool.Query(ctx, query)
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,17 +141,41 @@ func (s *EmailService) ListAccounts(ctx context.Context, userID uuid.UUID, role 
 	}, nil
 }
 
-func (s *EmailService) DeleteAccount(ctx context.Context, id string) error {
+func (s *EmailService) checkAccountOwner(ctx context.Context, id string, userID uuid.UUID, role string) error {
+	if role == "admin" {
+		return nil
+	}
+	var ownerID uuid.UUID
+	err := s.pool.QueryRow(ctx, `SELECT user_id FROM email_accounts WHERE id = $1`, id).Scan(&ownerID)
+	if err != nil {
+		return fmt.Errorf("email account not found")
+	}
+	if ownerID != userID {
+		return fmt.Errorf("email account not found")
+	}
+	return nil
+}
+
+func (s *EmailService) DeleteAccount(ctx context.Context, id string, userID uuid.UUID, role string) error {
+	if err := s.checkAccountOwner(ctx, id, userID, role); err != nil {
+		return err
+	}
 	_, err := s.pool.Exec(ctx, `DELETE FROM email_accounts WHERE id = $1`, id)
 	return err
 }
 
-func (s *EmailService) ToggleAccount(ctx context.Context, id string, isActive bool) error {
+func (s *EmailService) ToggleAccount(ctx context.Context, id string, isActive bool, userID uuid.UUID, role string) error {
+	if err := s.checkAccountOwner(ctx, id, userID, role); err != nil {
+		return err
+	}
 	_, err := s.pool.Exec(ctx, `UPDATE email_accounts SET is_active = $1, updated_at = NOW() WHERE id = $2`, isActive, id)
 	return err
 }
 
-func (s *EmailService) ChangePassword(ctx context.Context, id string, password string) error {
+func (s *EmailService) ChangePassword(ctx context.Context, id string, password string, userID uuid.UUID, role string) error {
+	if err := s.checkAccountOwner(ctx, id, userID, role); err != nil {
+		return err
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -107,7 +184,10 @@ func (s *EmailService) ChangePassword(ctx context.Context, id string, password s
 	return err
 }
 
-func (s *EmailService) UpdateQuota(ctx context.Context, id string, quotaMB int) error {
+func (s *EmailService) UpdateQuota(ctx context.Context, id string, quotaMB int, userID uuid.UUID, role string) error {
+	if err := s.checkAccountOwner(ctx, id, userID, role); err != nil {
+		return err
+	}
 	_, err := s.pool.Exec(ctx, `UPDATE email_accounts SET quota_mb = $1, updated_at = NOW() WHERE id = $2`, quotaMB, id)
 	return err
 }
@@ -125,7 +205,41 @@ func (s *EmailService) CreateForwarder(ctx context.Context, req models.CreateFor
 	if err != nil {
 		return nil, fmt.Errorf("failed to create forwarder: %w", err)
 	}
+	go s.applyForwarder(req.DomainID, req.Source, req.Destination, false)
 	return fwd, nil
+}
+
+func (s *EmailService) applyForwarder(domainID, source, destination string, remove bool) {
+	ctx := context.Background()
+	var serverID *string
+	if err := s.pool.QueryRow(ctx, `SELECT server_id::text FROM domains WHERE id = $1`, domainID).Scan(&serverID); err != nil || serverID == nil {
+		return
+	}
+	srv, err := s.getServerSSH(ctx, *serverID)
+	if err != nil {
+		return
+	}
+	var script string
+	if remove {
+		script = fmt.Sprintf(`
+ALIAS_FILE=/etc/postfix/virtual
+sed -i '/^%s /d' "$ALIAS_FILE" 2>/dev/null || true
+postmap "$ALIAS_FILE" 2>/dev/null || true
+postfix reload 2>/dev/null || true
+echo "FORWARDER_REMOVED"`, source)
+	} else {
+		script = fmt.Sprintf(`
+ALIAS_FILE=/etc/postfix/virtual
+touch "$ALIAS_FILE"
+grep -qxF '%s %s' "$ALIAS_FILE" || echo '%s %s' >> "$ALIAS_FILE"
+postmap "$ALIAS_FILE" 2>/dev/null || true
+postfix reload 2>/dev/null || true
+echo "FORWARDER_APPLIED"`, source, destination, source, destination)
+	}
+	out, err := provisioner.RunScript(srv, script)
+	if err != nil {
+		log.Printf("⚠ Forwarder SSH error: %v — %s", err, out)
+	}
 }
 
 func (s *EmailService) ListForwarders(ctx context.Context, page, perPage int) (*models.PaginatedResponse, error) {
@@ -157,6 +271,11 @@ func (s *EmailService) ListForwarders(ctx context.Context, page, perPage int) (*
 }
 
 func (s *EmailService) DeleteForwarder(ctx context.Context, id string) error {
+	var domainID, source, destination string
+	if err := s.pool.QueryRow(ctx, `SELECT domain_id::text, source, destination FROM email_forwarders WHERE id = $1`, id).
+		Scan(&domainID, &source, &destination); err == nil {
+		go s.applyForwarder(domainID, source, destination, true)
+	}
 	_, err := s.pool.Exec(ctx, `DELETE FROM email_forwarders WHERE id = $1`, id)
 	return err
 }
@@ -174,6 +293,7 @@ func (s *EmailService) CreateAlias(ctx context.Context, req models.CreateAliasRe
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alias: %w", err)
 	}
+	go s.applyForwarder(req.DomainID, req.Source, req.Destination, false)
 	return a, nil
 }
 
@@ -206,6 +326,11 @@ func (s *EmailService) ListAliases(ctx context.Context, page, perPage int) (*mod
 }
 
 func (s *EmailService) DeleteAlias(ctx context.Context, id string) error {
+	var domainID, source, destination string
+	if err := s.pool.QueryRow(ctx, `SELECT domain_id::text, source, destination FROM email_aliases WHERE id = $1`, id).
+		Scan(&domainID, &source, &destination); err == nil {
+		go s.applyForwarder(domainID, source, destination, true)
+	}
 	_, err := s.pool.Exec(ctx, `DELETE FROM email_aliases WHERE id = $1`, id)
 	return err
 }
@@ -328,4 +453,103 @@ func (s *EmailService) GetCatchAll(ctx context.Context, domainID string) (string
 	var addr string
 	err := s.pool.QueryRow(ctx, `SELECT COALESCE(catch_all_address, '') FROM domains WHERE id = $1`, domainID).Scan(&addr)
 	return addr, err
+}
+
+// ──────────── Webmail ────────────
+
+func (s *EmailService) getServerSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
+	var srv provisioner.ServerInfo
+	var port int
+	var encKey, encPassword string
+	err := s.pool.QueryRow(ctx,
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key,''), COALESCE(ssh_password,''), COALESCE(auth_method,'password')
+		 FROM servers WHERE id = $1`, serverID,
+	).Scan(&srv.IPAddress, &port, &srv.SSHUser, &encKey, &encPassword, &srv.AuthMethod)
+	if err != nil {
+		return srv, err
+	}
+	srv.Port = port
+	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+		if encKey != "" {
+			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
+				encKey = dec
+			}
+		}
+		if encPassword != "" {
+			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
+				encPassword = dec
+			}
+		}
+	}
+	srv.SSHKey = encKey
+	srv.SSHPassword = encPassword
+	return srv, nil
+}
+
+// DeployWebmail deploys Roundcube webmail via Docker on a server
+func (s *EmailService) DeployWebmail(ctx context.Context, serverID string) (map[string]string, error) {
+	srv, err := s.getServerSSH(ctx, serverID)
+	if err != nil {
+		return nil, fmt.Errorf("server not found: %w", err)
+	}
+
+	cmd := `docker rm -f novapanel-roundcube 2>/dev/null || true
+docker run -d --name novapanel-roundcube --restart unless-stopped \
+  -e ROUNDCUBEMAIL_DEFAULT_HOST=ssl://localhost \
+  -e ROUNDCUBEMAIL_DEFAULT_PORT=993 \
+  -e ROUNDCUBEMAIL_SMTP_SERVER=localhost \
+  -e ROUNDCUBEMAIL_SMTP_PORT=587 \
+  -e ROUNDCUBEMAIL_DB_TYPE=sqlite \
+  -p 8085:80 \
+  --add-host=localhost:host-gateway \
+  --add-host=host.docker.internal:host-gateway \
+  roundcube/roundcubemail:latest 2>&1
+echo "Roundcube deployed"
+docker port novapanel-roundcube 80`
+
+	output, err := provisioner.RunScript(srv, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy Roundcube: %w\nOutput: %s", err, output)
+	}
+
+	return map[string]string{
+		"tool":      "Roundcube",
+		"port":      "8085",
+		"url":       fmt.Sprintf("http://%s:8085", srv.IPAddress),
+		"server_ip": srv.IPAddress,
+		"output":    strings.TrimSpace(output),
+	}, nil
+}
+
+// WebmailStatus checks if the Roundcube container is running on a server
+func (s *EmailService) WebmailStatus(ctx context.Context, serverID string) (map[string]string, error) {
+	srv, err := s.getServerSSH(ctx, serverID)
+	if err != nil {
+		return nil, fmt.Errorf("server not found: %w", err)
+	}
+
+	cmd := `docker inspect -f '{{.State.Status}}' novapanel-roundcube 2>/dev/null || echo 'not_found'`
+	output, _ := provisioner.RunScript(srv, cmd)
+	status := strings.TrimSpace(output)
+
+	info := map[string]string{
+		"status":    status,
+		"tool":      "Roundcube",
+		"port":      "8085",
+		"server_ip": srv.IPAddress,
+	}
+	if status == "running" {
+		info["url"] = fmt.Sprintf("http://%s:8085", srv.IPAddress)
+	}
+	return info, nil
+}
+
+// StopWebmail stops the Roundcube container
+func (s *EmailService) StopWebmail(ctx context.Context, serverID string) error {
+	srv, err := s.getServerSSH(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	_, err = provisioner.RunScript(srv, `docker rm -f novapanel-roundcube 2>/dev/null && echo 'stopped'`)
+	return err
 }

@@ -10,6 +10,17 @@ import (
 	"os"
 )
 
+// DeriveKey pads/truncates a string key to exactly 32 bytes for AES-256.
+func DeriveKey(key string) []byte {
+	b := []byte(key)
+	if len(b) >= 32 {
+		return b[:32]
+	}
+	padded := make([]byte, 32)
+	copy(padded, b)
+	return padded
+}
+
 // GetEncryptionKey returns the 32-byte AES-256 key from environment.
 // Falls back to JWT_SECRET if NOVA_ENCRYPTION_KEY is not set.
 // The key is derived by padding/truncating to exactly 32 bytes.

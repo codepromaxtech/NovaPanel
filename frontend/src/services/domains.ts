@@ -33,4 +33,12 @@ export const domainService = {
     async remove(id: string): Promise<void> {
         await api.delete(`/domains/${id}`);
     },
+
+    async provisionSSL(id: string): Promise<void> {
+        await api.post(`/domains/${id}/ssl`);
+    },
+
+    async provisionWildcardSSL(id: string): Promise<void> {
+        await api.post(`/domains/${id}/ssl/wildcard`);
+    },
 };

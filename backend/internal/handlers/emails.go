@@ -52,10 +52,9 @@ func (h *EmailHandler) ListAccounts(c *gin.Context) {
 
 func (h *EmailHandler) DeleteAccount(c *gin.Context) {
 	id := c.Param("id")
-	if !confirm(c, "delete email account") {
-		return
-	}
-	if err := h.service.DeleteAccount(c.Request.Context(), id); err != nil {
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
+	if err := h.service.DeleteAccount(c.Request.Context(), id, userID, role); err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -64,13 +63,15 @@ func (h *EmailHandler) DeleteAccount(c *gin.Context) {
 
 func (h *EmailHandler) ToggleAccount(c *gin.Context) {
 	id := c.Param("id")
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
 	var req models.ToggleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		return
 	}
-	if err := h.service.ToggleAccount(c.Request.Context(), id, req.IsActive); err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+	if err := h.service.ToggleAccount(c.Request.Context(), id, req.IsActive, userID, role); err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, models.SuccessResponse{Message: "Account updated"})
@@ -78,13 +79,15 @@ func (h *EmailHandler) ToggleAccount(c *gin.Context) {
 
 func (h *EmailHandler) ChangePassword(c *gin.Context) {
 	id := c.Param("id")
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
 	var req models.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Password must be at least 8 characters", Message: err.Error()})
 		return
 	}
-	if err := h.service.ChangePassword(c.Request.Context(), id, req.Password); err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+	if err := h.service.ChangePassword(c.Request.Context(), id, req.Password, userID, role); err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, models.SuccessResponse{Message: "Password updated"})
@@ -92,13 +95,15 @@ func (h *EmailHandler) ChangePassword(c *gin.Context) {
 
 func (h *EmailHandler) UpdateQuota(c *gin.Context) {
 	id := c.Param("id")
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
 	var req models.UpdateQuotaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		return
 	}
-	if err := h.service.UpdateQuota(c.Request.Context(), id, req.QuotaMB); err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+	if err := h.service.UpdateQuota(c.Request.Context(), id, req.QuotaMB, userID, role); err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, models.SuccessResponse{Message: "Quota updated"})
@@ -266,6 +271,53 @@ func (h *EmailHandler) GetCatchAll(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"address": addr})
+}
+
+// ──────────── Webmail ────────────
+
+func (h *EmailHandler) DeployWebmail(c *gin.Context) {
+	var req struct {
+		ServerID string `json:"server_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	info, err := h.service.DeployWebmail(c.Request.Context(), req.ServerID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, info)
+}
+
+func (h *EmailHandler) WebmailStatus(c *gin.Context) {
+	serverID := c.Query("server_id")
+	if serverID == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "server_id required"})
+		return
+	}
+	info, err := h.service.WebmailStatus(c.Request.Context(), serverID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, info)
+}
+
+func (h *EmailHandler) StopWebmail(c *gin.Context) {
+	var req struct {
+		ServerID string `json:"server_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := h.service.StopWebmail(c.Request.Context(), req.ServerID); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, models.SuccessResponse{Message: "Webmail stopped"})
 }
 
 // helper — not used for backend confirm, just a no-op placeholder

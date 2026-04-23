@@ -3,8 +3,17 @@ package models
 import (
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
+
+// Claims is the JWT claims struct shared by middleware and services.
+type Claims struct {
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
+}
 
 type User struct {
 	ID               uuid.UUID  `json:"id" db:"id"`
@@ -386,4 +395,115 @@ type TeamMember struct {
 	ScopeID    *uuid.UUID `json:"scope_id,omitempty" db:"scope_id"`
 	InvitedAt  time.Time  `json:"invited_at" db:"invited_at"`
 	AcceptedAt *time.Time `json:"accepted_at,omitempty" db:"accepted_at"`
+}
+
+// API Keys
+
+type APIKey struct {
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	Name        string     `json:"name"`
+	KeyPrefix   string     `json:"key_prefix"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	IsActive    bool       `json:"is_active"`
+	Scopes      []string   `json:"scopes"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// Sessions
+
+type UserSession struct {
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	TokenJTI    string     `json:"-"`
+	IPAddress   string     `json:"ip_address,omitempty"`
+	UserAgent   string     `json:"user_agent,omitempty"`
+	LastSeenAt  time.Time  `json:"last_seen_at"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// Alerting
+
+type AlertRule struct {
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	ServerID    *uuid.UUID `json:"server_id,omitempty"`
+	Name        string     `json:"name"`
+	Metric      string     `json:"metric"`
+	Threshold   float64    `json:"threshold"`
+	Operator    string     `json:"operator"`
+	DurationMin int        `json:"duration_min"`
+	Channel     string     `json:"channel"`
+	Destination string     `json:"destination,omitempty"`
+	IsActive    bool       `json:"is_active"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type AlertIncident struct {
+	ID         uuid.UUID  `json:"id"`
+	RuleID     uuid.UUID  `json:"rule_id"`
+	FiredAt    time.Time  `json:"fired_at"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+	Value      float64    `json:"value"`
+	Notified   bool       `json:"notified"`
+}
+
+// FTP Accounts
+
+type FTPAccount struct {
+	ID          uuid.UUID `json:"id"`
+	UserID      uuid.UUID `json:"user_id"`
+	ServerID    uuid.UUID `json:"server_id"`
+	Username    string    `json:"username"`
+	HomeDir     string    `json:"home_dir"`
+	QuotaMB     int       `json:"quota_mb"`
+	IsActive    bool      `json:"is_active"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// Webhook Delivery Log
+
+type WebhookDelivery struct {
+	ID           uuid.UUID  `json:"id"`
+	AppID        *uuid.UUID `json:"app_id,omitempty"`
+	Event        string     `json:"event"`
+	ResponseCode int        `json:"response_code,omitempty"`
+	ResponseBody string     `json:"response_body,omitempty"`
+	DurationMs   int        `json:"duration_ms,omitempty"`
+	DeliveredAt  time.Time  `json:"delivered_at"`
+	Success      bool       `json:"success"`
+}
+
+// Reseller
+
+type ResellerQuota struct {
+	ID           uuid.UUID `json:"id"`
+	ResellerID   uuid.UUID `json:"reseller_id"`
+	ClientID     uuid.UUID `json:"client_id"`
+	MaxDomains   int       `json:"max_domains"`
+	MaxDatabases int       `json:"max_databases"`
+	MaxEmail     int       `json:"max_email"`
+	DiskGB       int       `json:"disk_gb"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// BillingPlan extended fields (mirrors DB columns added in migration 041)
+
+type BillingPlanFull struct {
+	BillingPlan
+	PlanType       string `json:"plan_type"`
+	MaxServers     int    `json:"max_servers"`
+	AllowWAF       bool   `json:"allow_waf"`
+	AllowFirewall  bool   `json:"allow_firewall"`
+	AllowCloudflare bool  `json:"allow_cloudflare"`
+	AllowTeam      bool   `json:"allow_team"`
+	AllowAPIKeys   bool   `json:"allow_api_keys"`
+	AllowK8s       bool   `json:"allow_k8s"`
+	AllowDocker    bool   `json:"allow_docker"`
+	AllowWildcardSSL bool `json:"allow_wildcard_ssl"`
+	AllowFTP       bool   `json:"allow_ftp"`
+	AllowReseller  bool   `json:"allow_reseller"`
+	AllowMultiDeploy bool `json:"allow_multi_deploy"`
 }

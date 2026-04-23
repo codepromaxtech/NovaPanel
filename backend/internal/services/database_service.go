@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
 	"github.com/novapanel/novapanel/internal/provisioner"
 )
@@ -26,12 +27,30 @@ func NewDatabaseService(pool *pgxpool.Pool) *DatabaseService {
 func (s *DatabaseService) getServerSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
 	var server provisioner.ServerInfo
 	var port int
+	var encKey, encPassword string
 	err := s.pool.QueryRow(ctx,
 		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
+	if err != nil {
+		return server, err
+	}
 	server.Port = port
-	return server, err
+	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+		if encKey != "" {
+			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
+				encKey = dec
+			}
+		}
+		if encPassword != "" {
+			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
+				encPassword = dec
+			}
+		}
+	}
+	server.SSHKey = encKey
+	server.SSHPassword = encPassword
+	return server, nil
 }
 
 // provisionDatabase creates the actual database and user on the remote server via SSH
@@ -156,6 +175,14 @@ func (s *DatabaseService) Create(ctx context.Context, userID uuid.UUID, req mode
 	dbUser := req.Name + "_user"
 	dbPass := uuid.New().String()[:16]
 
+	// Encrypt the DB password before storage
+	dbPassStored := dbPass
+	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
+		if enc, eerr := novacrypto.Encrypt(dbPass, cryptoKey); eerr == nil {
+			dbPassStored = enc
+		}
+	}
+
 	var serverID *uuid.UUID
 	if req.ServerID != "" {
 		parsed, err := uuid.Parse(req.ServerID)
@@ -170,7 +197,7 @@ func (s *DatabaseService) Create(ctx context.Context, userID uuid.UUID, req mode
 		`INSERT INTO databases (user_id, server_id, name, engine, db_user, db_password_enc, charset, status)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'provisioning')
 		 RETURNING id, user_id, server_id, name, engine, db_user, charset, size_mb, status, created_at, updated_at`,
-		userID, serverID, req.Name, engine, dbUser, dbPass, charset,
+		userID, serverID, req.Name, engine, dbUser, dbPassStored, charset,
 	).Scan(&db.ID, &db.UserID, &db.ServerID, &db.Name, &db.Engine, &db.DBUser, &db.Charset, &db.SizeMB, &db.Status, &db.CreatedAt, &db.UpdatedAt)
 
 	if err != nil {
@@ -215,16 +242,18 @@ func (s *DatabaseService) List(ctx context.Context, userID uuid.UUID, role strin
 
 	query := `SELECT id, user_id, server_id, name, engine, db_user, charset, size_mb, status, created_at, updated_at FROM databases`
 	countQuery := `SELECT count(*) FROM databases`
+	var args []interface{}
 
 	if role != "admin" {
-		query += fmt.Sprintf(` WHERE user_id = '%s'`, userID)
-		countQuery += fmt.Sprintf(` WHERE user_id = '%s'`, userID)
+		args = append(args, userID)
+		query += ` WHERE user_id = $1`
+		countQuery += ` WHERE user_id = $1`
 	}
 
-	s.pool.QueryRow(ctx, countQuery).Scan(&total)
+	s.pool.QueryRow(ctx, countQuery, args...).Scan(&total)
 
 	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT %d OFFSET %d`, perPage, offset)
-	rows, err := s.pool.Query(ctx, query)
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -248,14 +277,18 @@ func (s *DatabaseService) List(ctx context.Context, userID uuid.UUID, role strin
 	}, nil
 }
 
-func (s *DatabaseService) Delete(ctx context.Context, id string) error {
-	// Fetch database details for deprovisioning
+func (s *DatabaseService) Delete(ctx context.Context, id string, userID uuid.UUID, role string) error {
+	// Fetch database details for deprovisioning and ownership check
 	var dbName, dbUser, engine string
 	var serverID *uuid.UUID
+	var ownerID uuid.UUID
 	err := s.pool.QueryRow(ctx,
-		`SELECT name, db_user, engine, server_id FROM databases WHERE id = $1`, id,
-	).Scan(&dbName, &dbUser, &engine, &serverID)
+		`SELECT name, db_user, engine, server_id, user_id FROM databases WHERE id = $1`, id,
+	).Scan(&dbName, &dbUser, &engine, &serverID, &ownerID)
 	if err != nil {
+		return fmt.Errorf("database not found")
+	}
+	if role != "admin" && ownerID != userID {
 		return fmt.Errorf("database not found")
 	}
 

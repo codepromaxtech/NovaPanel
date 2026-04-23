@@ -3,18 +3,90 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
+	"github.com/novapanel/novapanel/internal/provisioner"
 )
 
 type WAFService struct {
-	pool *pgxpool.Pool
+	pool       *pgxpool.Pool
+	cryptoKey  []byte
 }
 
-func NewWAFService(pool *pgxpool.Pool) *WAFService {
-	return &WAFService{pool: pool}
+func NewWAFService(pool *pgxpool.Pool, encryptionKey string) *WAFService {
+	return &WAFService{pool: pool, cryptoKey: novacrypto.DeriveKey(encryptionKey)}
+}
+
+func (s *WAFService) getServerSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
+	var srv provisioner.ServerInfo
+	var port int
+	var encKey, encPassword string
+	err := s.pool.QueryRow(ctx,
+		`SELECT host(ip_address), port, ssh_user,
+		        COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		 FROM servers WHERE id = $1`, serverID,
+	).Scan(&srv.IPAddress, &port, &srv.SSHUser, &encKey, &encPassword, &srv.AuthMethod)
+	if err != nil {
+		return srv, fmt.Errorf("server not found: %w", err)
+	}
+	srv.Port = port
+	if encKey != "" {
+		if dec, err := novacrypto.Decrypt(encKey, s.cryptoKey); err == nil {
+			srv.SSHKey = dec
+		}
+	}
+	if encPassword != "" {
+		if dec, err := novacrypto.Decrypt(encPassword, s.cryptoKey); err == nil {
+			srv.SSHPassword = dec
+		}
+	}
+	return srv, nil
+}
+
+func (s *WAFService) applyWAFConfig(serverID string, cfg *models.WAFConfig) {
+	ctx := context.Background()
+	srv, err := s.getServerSSH(ctx, serverID)
+	if err != nil {
+		log.Printf("WAF provisioning: server SSH error: %v", err)
+		return
+	}
+
+	ruleEngine := "DetectionOnly"
+	if cfg.Mode == "blocking" {
+		ruleEngine = "On"
+	}
+	if !cfg.Enabled {
+		ruleEngine = "Off"
+	}
+
+	script := fmt.Sprintf(`
+set -e
+# Install modsecurity-nginx if missing
+if ! nginx -V 2>&1 | grep -q modsecurity; then
+  apt-get install -y libnginx-mod-http-modsecurity modsecurity-crs 2>/dev/null || true
+fi
+mkdir -p /etc/nginx/modsecurity
+cat > /etc/nginx/modsecurity/main.conf << 'MODSEC'
+SecRuleEngine %s
+SecRequestBodyLimit %d
+SecRequestBodyNoFilesLimit %d
+Include /usr/share/modsecurity-crs/crs-setup.conf
+Include /usr/share/modsecurity-crs/rules/*.conf
+MODSEC
+# Include in nginx if not already included
+grep -qF 'modsecurity_rules_file' /etc/nginx/nginx.conf || \
+  sed -i '/http {/a\\tmodsecurity on;\n\tmodsecurity_rules_file /etc/nginx/modsecurity/main.conf;' /etc/nginx/nginx.conf
+nginx -t && nginx -s reload && echo "WAF_APPLIED"
+`, ruleEngine, cfg.MaxRequestBody, cfg.MaxRequestBody)
+
+	out, err := provisioner.RunScript(srv, script)
+	if err != nil {
+		log.Printf("WAF apply error: %v — output: %s", err, out)
+	}
 }
 
 // ──────────── Config ────────────
@@ -90,6 +162,8 @@ func (s *WAFService) UpdateConfig(ctx context.Context, serverID string, req mode
 	if err != nil {
 		return nil, fmt.Errorf("failed to update WAF config: %w", err)
 	}
+	// Apply to server asynchronously
+	go s.applyWAFConfig(serverID, cfg)
 	return cfg, nil
 }
 

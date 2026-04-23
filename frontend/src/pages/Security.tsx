@@ -83,7 +83,7 @@ export default function Security() {
             </div>
 
             {loading ? (
-                <div className="flex items-center justify-center py-20"><Loader className="w-6 h-6 text-nova-500 animate-spin" /></div>
+                <div className="flex items-center justify-center py-20"><Loader className="w-6 h-6 text-nova-400 animate-spin" /></div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2 glass-card rounded-2xl overflow-hidden">
@@ -120,7 +120,7 @@ export default function Security() {
                                             </td>
                                             <td className="py-2.5 px-5 text-sm text-surface-200/40">{r.description}</td>
                                             <td className="py-2.5 px-5">
-                                                <button onClick={() => handleDeleteRule(r.id)} className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/30 hover:text-danger transition-colors">
+                                                <button onClick={() => handleDeleteRule(r.id)} className="p-1.5 rounded-lg hover:bg-danger/10 text-surface-200/50 hover:text-danger transition-colors">
                                                     <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
                                             </td>
@@ -143,10 +143,10 @@ export default function Security() {
                                     <div key={e.id} className="px-5 py-3 hover:bg-white/[0.02] transition-colors">
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className={`text-xs px-2 py-0.5 rounded-full ${severityColors[e.severity] || ''}`}>{e.severity}</span>
-                                            <span className="text-xs text-surface-200/30">{e.created_at ? new Date(e.created_at).toLocaleString() : ''}</span>
+                                            <span className="text-xs text-surface-200/50">{e.created_at ? new Date(e.created_at).toLocaleString() : ''}</span>
                                         </div>
                                         <p className="text-sm text-surface-200/70">{e.details}</p>
-                                        <p className="text-xs text-surface-200/30 font-mono mt-0.5">{e.source_ip}</p>
+                                        <p className="text-xs text-surface-200/50 font-mono mt-0.5">{e.source_ip}</p>
                                     </div>
                                 ))}
                             </div>

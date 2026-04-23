@@ -104,7 +104,7 @@ export default function Services() {
                         return (
                             <div key={i} className="group flex items-center justify-between px-4 py-2 rounded-lg bg-surface-800/50 border border-surface-700/50 hover:border-surface-700 transition-colors">
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                                    {isRunning ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> : isFailed ? <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 text-surface-200/30 shrink-0" />}
+                                    {isRunning ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> : isFailed ? <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 text-surface-200/50 shrink-0" />}
                                     <span className="text-xs font-mono text-white truncate">{svcName}</span>
                                     <span className={`text-xs px-1.5 py-0.5 rounded ${isRunning ? 'text-emerald-400' : isFailed ? 'text-red-400' : 'text-surface-200/40'}`}>{isRunning ? 'running' : isFailed ? 'failed' : 'inactive'}</span>
                                 </div>
@@ -118,13 +118,13 @@ export default function Services() {
                             </div>
                         );
                     })}
-                    {lines.length === 0 && <p className="text-center text-surface-200/30 py-8">No services found</p>}
+                    {lines.length === 0 && <p className="text-center text-surface-200/50 py-8">No services found</p>}
                 </div>
             )}
             {server && !loading && (tab === 'failed' || tab === 'timers') && (
                 <pre className="bg-surface-900 rounded-xl p-4 text-xs text-surface-200/60 whitespace-pre-wrap font-mono max-h-96 overflow-auto border border-surface-700/30">{output || 'None'}</pre>
             )}
-            {!server && <p className="text-center text-surface-200/30 py-12">Select a server to manage services</p>}
+            {!server && <p className="text-center text-surface-200/50 py-12">Select a server to manage services</p>}
 
             {showStatus && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowStatus(false)}>

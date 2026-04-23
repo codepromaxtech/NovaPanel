@@ -10,15 +10,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
 )
 
 type AppService struct {
-	pool *pgxpool.Pool
+	pool      *pgxpool.Pool
+	cryptoKey []byte
 }
 
-func NewAppService(pool *pgxpool.Pool) *AppService {
-	return &AppService{pool: pool}
+func NewAppService(pool *pgxpool.Pool, encryptionKey string) *AppService {
+	return &AppService{pool: pool, cryptoKey: novacrypto.DeriveKey(encryptionKey)}
 }
 
 func (s *AppService) Create(ctx context.Context, userID uuid.UUID, req models.CreateAppRequest) (*models.Application, error) {
@@ -77,16 +79,18 @@ func (s *AppService) List(ctx context.Context, userID uuid.UUID, role string, pa
 	var total int64
 
 	baseWhere := ""
+	var args []interface{}
 	if role != "admin" {
-		baseWhere = fmt.Sprintf(" WHERE user_id = '%s'", userID)
+		args = append(args, userID)
+		baseWhere = " WHERE user_id = $1"
 	}
 
-	s.pool.QueryRow(ctx, "SELECT count(*) FROM applications"+baseWhere).Scan(&total)
+	s.pool.QueryRow(ctx, "SELECT count(*) FROM applications"+baseWhere, args...).Scan(&total)
 
 	rows, err := s.pool.Query(ctx,
 		fmt.Sprintf(`SELECT id, user_id, domain_id, server_id, name, app_type, runtime, deploy_method,
 		        COALESCE(git_repo,''), COALESCE(git_branch,'main'), status, created_at, updated_at
-		 FROM applications%s ORDER BY created_at DESC LIMIT %d OFFSET %d`, baseWhere, perPage, offset))
+		 FROM applications%s ORDER BY created_at DESC LIMIT %d OFFSET %d`, baseWhere, perPage, offset), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +128,14 @@ func (s *AppService) GetByID(ctx context.Context, id string) (*models.Applicatio
 	return app, nil
 }
 
-func (s *AppService) Update(ctx context.Context, id string, req models.UpdateAppRequest) (*models.Application, error) {
+func (s *AppService) Update(ctx context.Context, id string, req models.UpdateAppRequest, userID uuid.UUID, role string) (*models.Application, error) {
+	existing, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("application not found")
+	}
+	if role != "admin" && existing.UserID != userID {
+		return nil, fmt.Errorf("application not found")
+	}
 	setClauses := []string{}
 	args := []interface{}{}
 	argIdx := 1
@@ -177,9 +188,15 @@ func (s *AppService) Update(ctx context.Context, id string, req models.UpdateApp
 	}
 	if req.EnvVars != nil {
 		envJSON, _ := json.Marshal(req.EnvVars)
-		setClauses = append(setClauses, fmt.Sprintf("env_vars = $%d", argIdx))
-		args = append(args, envJSON)
-		argIdx++
+		if enc, err := novacrypto.Encrypt(string(envJSON), s.cryptoKey); err == nil {
+			setClauses = append(setClauses, fmt.Sprintf("env_vars_enc = $%d", argIdx))
+			args = append(args, enc)
+			argIdx++
+		} else {
+			setClauses = append(setClauses, fmt.Sprintf("env_vars = $%d", argIdx))
+			args = append(args, envJSON)
+			argIdx++
+		}
 	}
 	if req.Status != "" {
 		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argIdx))
@@ -204,7 +221,7 @@ func (s *AppService) Update(ctx context.Context, id string, req models.UpdateApp
 	)
 
 	app := &models.Application{}
-	err := s.pool.QueryRow(ctx, query, args...).Scan(
+	err = s.pool.QueryRow(ctx, query, args...).Scan(
 		&app.ID, &app.UserID, &app.DomainID, &app.ServerID, &app.Name, &app.AppType,
 		&app.Runtime, &app.DeployMethod, &app.GitRepo, &app.GitBranch, &app.Status,
 		&app.CreatedAt, &app.UpdatedAt,
@@ -215,7 +232,14 @@ func (s *AppService) Update(ctx context.Context, id string, req models.UpdateApp
 	return app, nil
 }
 
-func (s *AppService) Delete(ctx context.Context, id string) error {
+func (s *AppService) Delete(ctx context.Context, id string, userID uuid.UUID, role string) error {
+	app, err := s.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("application not found")
+	}
+	if role != "admin" && app.UserID != userID {
+		return fmt.Errorf("application not found")
+	}
 	result, err := s.pool.Exec(ctx, "DELETE FROM applications WHERE id = $1", id)
 	if err != nil {
 		return err

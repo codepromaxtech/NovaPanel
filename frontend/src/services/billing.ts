@@ -16,6 +16,19 @@ export const billingService = {
         const { data } = await api.get('/billing/invoices');
         return data;
     },
+
+    // ── Stripe Subscription ──
+    async createCheckout(planId: string) {
+        const { data } = await api.post('/billing/checkout', { plan_id: planId });
+        return data as { checkout_url: string };
+    },
+    async getSubscription() {
+        const { data } = await api.get('/billing/subscription');
+        return data as { plan_name: string; plan_type: string; expires_at: string | null; stripe_subscription_id: string | null };
+    },
+    async cancelSubscription() {
+        await api.delete('/billing/subscription');
+    },
 };
 
 export const settingsService = {
@@ -26,5 +39,18 @@ export const settingsService = {
     async updateProfile(payload: { name?: string; email?: string; password?: string }) {
         const { data } = await api.put('/settings/profile', payload);
         return data;
+    },
+
+    // ── API Keys ──
+    async listApiKeys() {
+        const { data } = await api.get('/settings/api-keys');
+        return data as Array<{ id: string; name: string; key_prefix: string; scopes: string[]; last_used_at: string | null; expires_at: string | null; created_at: string }>;
+    },
+    async createApiKey(name: string, scopes: string[], expiresAt?: string) {
+        const { data } = await api.post('/settings/api-keys', { name, scopes, expires_at: expiresAt });
+        return data as { id: string; name: string; key_prefix: string; raw_key: string; created_at: string };
+    },
+    async revokeApiKey(id: string) {
+        await api.delete(`/settings/api-keys/${id}`);
     },
 };

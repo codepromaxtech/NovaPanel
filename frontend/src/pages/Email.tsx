@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Mail, Plus, Trash2, Search, Loader, X, ArrowRightLeft, AtSign, MessageSquareReply, Shield, Inbox, Globe, Send, ToggleLeft, ToggleRight, Lock, HardDrive, Copy, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
+import { useModalLock } from '../hooks/useModalLock';
+import { Mail, Plus, Trash2, Search, Loader, X, ArrowRightLeft, AtSign, MessageSquareReply, Shield, Inbox, Globe, Send, ToggleLeft, ToggleRight, Lock, HardDrive, Copy, CheckCircle2, XCircle, ExternalLink, StopCircle } from 'lucide-react';
 import { emailService } from '../services/emails';
+import { serverService } from '../services/servers';
 import { useToast } from '../components/ui/ToastProvider';
 
 interface EmailAccount { id: string; address: string; quota_mb: number; used_mb: number; is_active: boolean; created_at: string; domain_id: string; }
@@ -32,6 +34,7 @@ export default function Email() {
     const [accounts, setAccounts] = useState<EmailAccount[]>([]);
     const [showCreate, setShowCreate] = useState(false);
     const [newAcct, setNewAcct] = useState({ address: '', password: '', quota_mb: 1024, domain_id: '' });
+    useModalLock(showCreate);
     const [pwModal, setPwModal] = useState<string | null>(null);
     const [newPw, setNewPw] = useState('');
     const [quotaModal, setQuotaModal] = useState<string | null>(null);
@@ -60,6 +63,12 @@ export default function Email() {
     const [catchAllDomainId, setCatchAllDomainId] = useState('');
     const [catchAllAddr, setCatchAllAddr] = useState('');
 
+    // ──── Webmail ────
+    const [wmServers, setWmServers] = useState<{id: string; name: string; ip_address: string}[]>([]);
+    const [wmServer, setWmServer] = useState('');
+    const [wmStatus, setWmStatus] = useState<{status: string; url?: string; tool?: string} | null>(null);
+    const [wmLoading, setWmLoading] = useState(false);
+
     const fetchAccounts = async () => {
         setLoading(true);
         try { const r = await emailService.list(); setAccounts(r.data || []); } catch { toast.error('Failed to load accounts'); }
@@ -86,6 +95,9 @@ export default function Email() {
         else if (tab === 'forwarders') fetchForwarders();
         else if (tab === 'aliases') fetchAliases();
         else if (tab === 'autoresponders') fetchAutoresponders();
+        else if (tab === 'webmail' && wmServers.length === 0) {
+            serverService.list(1, 100).then(r => setWmServers(r.data || [])).catch(() => {});
+        }
     }, [tab]);
 
     // ──── Handlers ────
@@ -145,6 +157,21 @@ export default function Email() {
         try { await emailService.setCatchAll(catchAllDomainId, catchAllAddr); toast.success('Catch-all updated'); } catch { toast.error('Failed'); }
     };
 
+    const checkWmStatus = async (sid: string) => {
+        if (!sid) return;
+        try { const s = await emailService.webmailStatus(sid); setWmStatus(s); } catch { setWmStatus(null); }
+    };
+    const handleDeployWebmail = async () => {
+        if (!wmServer) { toast.error('Select a server'); return; }
+        setWmLoading(true);
+        try { const r = await emailService.deployWebmail(wmServer); setWmStatus(r); toast.success('Roundcube webmail deployed!'); } catch { toast.error('Deploy failed'); }
+        setWmLoading(false);
+    };
+    const handleStopWebmail = async () => {
+        if (!wmServer || !confirm('Stop webmail?')) return;
+        try { await emailService.stopWebmail(wmServer); setWmStatus({ status: 'not_found' }); toast.success('Webmail stopped'); } catch { toast.error('Failed'); }
+    };
+
     const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); toast.success('Copied!'); };
 
     const filteredAccounts = accounts.filter(a => a.address.toLowerCase().includes(search.toLowerCase()));
@@ -183,7 +210,7 @@ export default function Email() {
             {['accounts', 'forwarders', 'aliases', 'autoresponders'].includes(tab) && (
                 <div className="flex gap-3">
                     <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-200/30" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-200/50" />
                         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className={`${inputCls} pl-10`} />
                     </div>
                     <button onClick={() => {
@@ -206,7 +233,7 @@ export default function Email() {
                         <div key={acct.id} className="group bg-surface-800/50 border border-surface-700/50 rounded-xl p-4 flex items-center justify-between hover:border-surface-700 transition-colors">
                             <div className="flex items-center gap-4">
                                 <div className={`p-2.5 rounded-xl ${acct.is_active ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-surface-700/30 border border-surface-700/50'}`}>
-                                    <Mail className={`w-5 h-5 ${acct.is_active ? 'text-emerald-400' : 'text-surface-200/30'}`} />
+                                    <Mail className={`w-5 h-5 ${acct.is_active ? 'text-emerald-400' : 'text-surface-200/50'}`} />
                                 </div>
                                 <div>
                                     <p className="text-white font-medium">{acct.address}</p>
@@ -220,6 +247,7 @@ export default function Email() {
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button onClick={() => handleToggleAcct(acct.id, acct.is_active)} title={acct.is_active ? 'Disable' : 'Enable'}
+                                    aria-label={acct.is_active ? 'Disable account' : 'Enable account'} aria-pressed={acct.is_active}
                                     className="p-2 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white transition-colors">
                                     {acct.is_active ? <ToggleRight className="w-4 h-4 text-emerald-400" /> : <ToggleLeft className="w-4 h-4" />}
                                 </button>
@@ -232,7 +260,7 @@ export default function Email() {
                             </div>
                         </div>
                     ))}
-                    {filteredAccounts.length === 0 && !loading && <p className="text-center text-surface-200/30 py-12">No email accounts found</p>}
+                    {filteredAccounts.length === 0 && !loading && <p className="text-center text-surface-200/50 py-12">No email accounts found</p>}
                 </div>
             )}
 
@@ -251,7 +279,7 @@ export default function Email() {
                             <button onClick={() => handleDeleteFwd(fwd.id)} className="p-2 rounded-lg hover:bg-danger/20 text-surface-200/40 hover:text-danger transition-colors opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></button>
                         </div>
                     ))}
-                    {filteredForwarders.length === 0 && <p className="text-center text-surface-200/30 py-12">No forwarders configured</p>}
+                    {filteredForwarders.length === 0 && <p className="text-center text-surface-200/50 py-12">No forwarders configured</p>}
                 </div>
             )}
 
@@ -270,7 +298,7 @@ export default function Email() {
                             <button onClick={() => handleDeleteAlias(alias.id)} className="p-2 rounded-lg hover:bg-danger/20 text-surface-200/40 hover:text-danger transition-colors opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></button>
                         </div>
                     ))}
-                    {filteredAliases.length === 0 && <p className="text-center text-surface-200/30 py-12">No aliases configured</p>}
+                    {filteredAliases.length === 0 && <p className="text-center text-surface-200/50 py-12">No aliases configured</p>}
                 </div>
             )}
 
@@ -281,13 +309,13 @@ export default function Email() {
                         <div key={ar.id} className="group bg-surface-800/50 border border-surface-700/50 rounded-xl p-4 flex items-center justify-between hover:border-surface-700 transition-colors">
                             <div className="flex items-center gap-4">
                                 <div className={`p-2.5 rounded-xl ${ar.is_active ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-surface-700/30 border border-surface-700/50'}`}>
-                                    <MessageSquareReply className={`w-5 h-5 ${ar.is_active ? 'text-amber-400' : 'text-surface-200/30'}`} />
+                                    <MessageSquareReply className={`w-5 h-5 ${ar.is_active ? 'text-amber-400' : 'text-surface-200/50'}`} />
                                 </div>
                                 <div>
                                     <p className="text-white font-medium">{ar.subject}</p>
                                     <div className="flex items-center gap-2 mt-0.5">
                                         <span className="text-xs text-surface-200/40 truncate max-w-xs">{ar.body.substring(0, 60)}...</span>
-                                        {ar.start_date && <span className="text-xs text-surface-200/30">{ar.start_date} — {ar.end_date || '∞'}</span>}
+                                        {ar.start_date && <span className="text-xs text-surface-200/50">{ar.start_date} — {ar.end_date || '∞'}</span>}
                                     </div>
                                 </div>
                             </div>
@@ -300,7 +328,7 @@ export default function Email() {
                             </div>
                         </div>
                     ))}
-                    {autoresponders.length === 0 && <p className="text-center text-surface-200/30 py-12">No autoresponders configured</p>}
+                    {autoresponders.length === 0 && <p className="text-center text-surface-200/50 py-12">No autoresponders configured</p>}
                 </div>
             )}
 
@@ -349,7 +377,7 @@ export default function Email() {
                         </div>
                     )}
                     {!dnsStatus && !loading && (
-                        <div className="text-center py-12 text-surface-200/30">
+                        <div className="text-center py-12 text-surface-200/50">
                             <Shield className="w-12 h-12 mx-auto mb-3 opacity-30" />
                             <p>Enter a domain name to check SPF, DKIM, and DMARC records</p>
                         </div>
@@ -374,18 +402,71 @@ export default function Email() {
             {tab === 'webmail' && (
                 <div className="space-y-4">
                     <div className="bg-surface-800/50 border border-surface-700/50 rounded-xl p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <div>
-                                <h3 className="text-lg font-semibold text-white flex items-center gap-2"><Globe className="w-5 h-5 text-nova-400" /> Webmail Client</h3>
-                                <p className="text-sm text-surface-200/40 mt-1">Access your email inbox directly from the browser using Roundcube webmail.</p>
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-1">
+                            <Globe className="w-5 h-5 text-nova-400" /> Roundcube Webmail
+                        </h3>
+                        <p className="text-sm text-surface-200/40 mb-5">Deploy Roundcube webmail on a server so users can log in with their email address and password directly from the browser — just like cPanel webmail.</p>
+
+                        <div className="flex items-center gap-3 mb-4">
+                            <select
+                                value={wmServer}
+                                onChange={e => { setWmServer(e.target.value); setWmStatus(null); checkWmStatus(e.target.value); }}
+                                className={inputCls + " max-w-xs bg-transparent"}>
+                                <option value="">Select server</option>
+                                {wmServers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.ip_address})</option>)}
+                            </select>
+                        </div>
+
+                        {wmServer && (
+                            <div className={`border rounded-xl p-5 ${wmStatus?.status === 'running' ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-surface-700/50'}`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <Globe className={`w-6 h-6 ${wmStatus?.status === 'running' ? 'text-emerald-400' : 'text-surface-200/50'}`} />
+                                        <div>
+                                            <p className="text-white font-semibold">Roundcube Webmail</p>
+                                            <p className="text-xs text-surface-200/40">Port 8085 · Docker container</p>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded-full text-xs ${wmStatus?.status === 'running' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-surface-700/50 text-surface-200/40'}`}>
+                                            {wmStatus?.status === 'running' ? 'Running' : wmStatus ? 'Stopped' : 'Unknown'}
+                                        </span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {wmStatus?.status === 'running' ? (
+                                            <>
+                                                <a href={wmStatus.url} target="_blank" rel="noopener noreferrer" className={btnPrimary + " flex items-center gap-2 text-sm"}>
+                                                    <ExternalLink className="w-4 h-4" /> Open Webmail
+                                                </a>
+                                                <button onClick={handleStopWebmail} className="px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm border border-red-500/20 hover:bg-red-500/20 flex items-center gap-1">
+                                                    <StopCircle className="w-4 h-4" /> Stop
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <button onClick={handleDeployWebmail} disabled={wmLoading} className={btnPrimary + " flex items-center gap-2"}>
+                                                {wmLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                                                {wmLoading ? 'Deploying...' : 'Deploy Roundcube'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                {wmStatus?.status === 'running' && wmStatus.url && (
+                                    <div className="mt-4 pt-4 border-t border-surface-700/30">
+                                        <p className="text-xs text-surface-200/40 mb-1">Webmail URL:</p>
+                                        <div className="flex items-center gap-2 bg-surface-900/60 rounded-lg px-3 py-2">
+                                            <code className="text-xs text-emerald-300 flex-1">{wmStatus.url}</code>
+                                            <button onClick={() => { navigator.clipboard.writeText(wmStatus.url!); toast.success('Copied!'); }}
+                                                className="p-1 hover:bg-surface-700/50 rounded"><Copy className="w-3.5 h-3.5 text-surface-200/40" /></button>
+                                        </div>
+                                        <p className="text-xs text-surface-200/50 mt-2">Users log in with their full email address (e.g. user@example.com) and their email account password.</p>
+                                    </div>
+                                )}
                             </div>
-                            <a href="/webmail" target="_blank" rel="noopener" className={btnPrimary + " flex items-center gap-2"}>
-                                <ExternalLink className="w-4 h-4" /> Open in New Tab
-                            </a>
-                        </div>
-                        <div className="bg-surface-900 rounded-xl border border-surface-700/50 overflow-hidden" style={{ height: '600px' }}>
-                            <iframe src="/webmail" className="w-full h-full border-0" title="Webmail" sandbox="allow-same-origin allow-scripts allow-forms allow-popups" />
-                        </div>
+                        )}
+                        {!wmServer && (
+                            <div className="text-center py-10 text-surface-200/50">
+                                <Globe className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                                <p>Select a server to manage Roundcube webmail</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

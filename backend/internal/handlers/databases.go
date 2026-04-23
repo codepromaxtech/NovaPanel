@@ -6,16 +6,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/novapanel/novapanel/internal/models"
 	"github.com/novapanel/novapanel/internal/services"
 )
 
 type DatabaseHandler struct {
 	service *services.DatabaseService
+	pool    *pgxpool.Pool
 }
 
-func NewDatabaseHandler(service *services.DatabaseService) *DatabaseHandler {
-	return &DatabaseHandler{service: service}
+func NewDatabaseHandler(service *services.DatabaseService, pool *pgxpool.Pool) *DatabaseHandler {
+	return &DatabaseHandler{service: service, pool: pool}
 }
 
 func (h *DatabaseHandler) Create(c *gin.Context) {
@@ -31,6 +33,8 @@ func (h *DatabaseHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		return
 	}
+	writeAudit(c.Request.Context(), h.pool, userID, "create", "database", db.ID.String(), c.ClientIP(),
+		map[string]interface{}{"name": db.Name, "engine": db.Engine})
 	c.JSON(http.StatusCreated, db)
 }
 
@@ -50,9 +54,12 @@ func (h *DatabaseHandler) List(c *gin.Context) {
 
 func (h *DatabaseHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.service.Delete(c.Request.Context(), id); err != nil {
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
+	if err := h.service.Delete(c.Request.Context(), id, userID, role); err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
 		return
 	}
+	writeAudit(c.Request.Context(), h.pool, userID, "delete", "database", id, c.ClientIP(), nil)
 	c.JSON(http.StatusOK, models.SuccessResponse{Message: "Database deleted successfully"})
 }
