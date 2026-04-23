@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: docker.io
   API_IMAGE: codepromax24/novapanel-api
   AUTOMATION_IMAGE: codepromax24/novapanel-automation
 
