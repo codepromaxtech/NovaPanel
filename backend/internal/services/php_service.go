@@ -35,9 +35,9 @@ func (s *PHPService) getServerSSH(ctx context.Context, serverID string) (provisi
 	var server provisioner.ServerInfo
 	var port int
 	err := s.db.QueryRow(ctx,
-		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password'), COALESCE(is_local, FALSE)
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod, &server.IsLocal)
 	server.Port = port
 	return server, err
 }

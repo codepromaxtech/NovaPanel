@@ -96,9 +96,9 @@ func (s *ServerService) GetDecryptedSSH(ctx context.Context, serverID string) (p
 	var port int
 	var encKey, encPassword string
 	err := s.db.QueryRow(ctx,
-		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password'), COALESCE(is_local, FALSE)
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod)
+	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod, &server.IsLocal)
 	if err != nil {
 		return server, err
 	}

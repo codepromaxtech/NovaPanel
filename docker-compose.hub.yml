@@ -131,8 +131,10 @@ services:
       - /lib/systemd/system:/host/systemd/lib:ro
       - /var/run/dbus:/var/run/dbus:ro
       - /root/.ssh:/host/ssh:ro
+    pid: host
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
+    cap_add: [SYS_PTRACE]
     depends_on:
       postgres:
         condition: service_healthy

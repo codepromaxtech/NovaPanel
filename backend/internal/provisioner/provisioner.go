@@ -5,20 +5,22 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os/exec"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 )
 
-// ServerInfo holds the SSH connection details for a server
+// ServerInfo holds the connection details for a server
 type ServerInfo struct {
-	IPAddress  string
-	Port       int
-	SSHUser    string
-	SSHKey     string
+	IPAddress   string
+	Port        int
+	SSHUser     string
+	SSHKey      string
 	SSHPassword string
-	AuthMethod string // "password" or "key"
+	AuthMethod  string // "password" or "key"
+	IsLocal     bool   // true = run via nsenter on host, no SSH needed
 }
 
 // Result holds the output of a provisioning step
@@ -29,31 +31,57 @@ type Result struct {
 	Duration  string `json:"duration"`
 }
 
-// RunScript SSHes into the server and runs a shell script, returning output.
+// RunScript runs a shell script on the server, routing to local nsenter or SSH.
 // Automatically wraps the script with sudo when the SSH user is not root.
 func RunScript(server ServerInfo, script string) (string, error) {
+	if server.IsLocal {
+		return RunScriptLocally(script)
+	}
 	needsSudo := server.SSHUser != "" && server.SSHUser != "root"
 	return runSSH(server, script, needsSudo)
 }
 
-// RunScriptAsUser SSHes into the server and runs a script as the logged-in user
-// (no sudo). Use this for user-level operations like ~/.ssh/authorized_keys setup.
+// RunScriptAsUser runs a script as the logged-in user (no sudo).
 func RunScriptAsUser(server ServerInfo, script string) (string, error) {
+	if server.IsLocal {
+		return RunScriptLocally(script)
+	}
 	return runSSH(server, script, false)
 }
 
-// RunScriptAsSystemUser SSHes into the server and runs a script as a specific
-// system user (e.g., the domain owner). This provides per-domain isolation so
-// one client's operations cannot interfere with another's files or processes.
+// RunScriptAsSystemUser runs a script as a specific system user.
 func RunScriptAsSystemUser(server ServerInfo, systemUser string, script string) (string, error) {
+	if server.IsLocal {
+		if systemUser == "" || systemUser == "root" {
+			return RunScriptLocally(script)
+		}
+		wrapped := fmt.Sprintf("sudo -u '%s' bash -c '%s'",
+			strings.ReplaceAll(systemUser, "'", "'\"'\"'"),
+			strings.ReplaceAll(script, "'", "'\"'\"'"))
+		return RunScriptLocally(wrapped)
+	}
 	if systemUser == "" || systemUser == "root" {
 		return RunScript(server, script)
 	}
-	// Wrap the script with sudo -u to execute as the target system user
 	wrappedScript := fmt.Sprintf("sudo -u '%s' bash -c '%s'",
 		strings.ReplaceAll(systemUser, "'", "'\"'\"'"),
 		strings.ReplaceAll(script, "'", "'\"'\"'"))
 	return runSSH(server, wrappedScript, false)
+}
+
+// RunScriptLocally runs a script on the host system by entering host namespaces
+// via nsenter. Requires the container to run with pid:host and SYS_PTRACE cap.
+func RunScriptLocally(script string) (string, error) {
+	innerScript := fmt.Sprintf("set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s", script)
+	cmd := exec.Command("nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "bash", "-c", innerScript)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return stderr.String() + "\n" + stdout.String(),
+			fmt.Errorf("local script failed: %w\nstderr: %s", err, stderr.String())
+	}
+	return stdout.String(), nil
 }
 
 func runSSH(server ServerInfo, script string, useSudo bool) (string, error) {

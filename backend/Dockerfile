@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o novapanel-api ./cmd/ap
 
 # Stage 3: Minimal runtime image
 FROM alpine:3.19
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata util-linux
 WORKDIR /app
 
 COPY --from=go-builder /app/novapanel-api .

@@ -27,9 +27,9 @@ func (s *WAFService) getServerSSH(ctx context.Context, serverID string) (provisi
 	var encKey, encPassword string
 	err := s.pool.QueryRow(ctx,
 		`SELECT host(ip_address), port, ssh_user,
-		        COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password')
+		        COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password'), COALESCE(is_local, FALSE)
 		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&srv.IPAddress, &port, &srv.SSHUser, &encKey, &encPassword, &srv.AuthMethod)
+	).Scan(&srv.IPAddress, &port, &srv.SSHUser, &encKey, &encPassword, &srv.AuthMethod, &srv.IsLocal)
 	if err != nil {
 		return srv, fmt.Errorf("server not found: %w", err)
 	}

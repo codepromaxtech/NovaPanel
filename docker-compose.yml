@@ -202,10 +202,14 @@ services:
       - /etc/init.d:/host/init.d:ro
       - /home/${HOST_USER:-erp}/.ssh:/host/ssh:ro
       - /var/run/dbus:/var/run/dbus:ro
+    # pid: host enables nsenter for local (no-SSH) host command execution
+    pid: host
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - SYS_PTRACE   # required for nsenter to enter host namespaces
     deploy:
       resources:
         limits:

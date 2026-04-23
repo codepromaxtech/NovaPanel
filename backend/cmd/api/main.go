@@ -960,12 +960,13 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 	}
 }
 
-// autoRegisterHostServer adds the host machine as the "master" server with full
-// SSH credentials so it is managed identically to any remote server.
+// autoRegisterHostServer adds the host machine as the "master" server.
+// When SSH credentials are provided it uses SSH; otherwise it marks the server
+// as local and routes all commands through nsenter (no SSH daemon required).
 func autoRegisterHostServer(pool *pgxpool.Pool) {
 	ctx := context.Background()
 
-	// Read SSH credentials from environment (set in docker-compose / .env)
+	// Read SSH credentials from environment
 	sshUser := os.Getenv("SSH_USER")
 	if sshUser == "" {
 		sshUser = os.Getenv("HOST_USER")
@@ -984,22 +985,29 @@ func autoRegisterHostServer(pool *pgxpool.Pool) {
 		}
 	}
 
+	// Determine exec mode: local nsenter when no SSH credentials are available
+	isLocal := sshKey == "" && sshPassword == ""
 	authMethod := "password"
 	if sshKey != "" {
 		authMethod = "key"
 	}
+	if isLocal {
+		authMethod = "local"
+	}
 
 	// Encrypt credentials for storage
 	encPassword, encKey := "", ""
-	if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
-		if sshPassword != "" {
-			if enc, err := novacrypto.Encrypt(sshPassword, cryptoKey); err == nil {
-				encPassword = enc
+	if !isLocal {
+		if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
+			if sshPassword != "" {
+				if enc, err := novacrypto.Encrypt(sshPassword, cryptoKey); err == nil {
+					encPassword = enc
+				}
 			}
-		}
-		if sshKey != "" {
-			if enc, err := novacrypto.Encrypt(sshKey, cryptoKey); err == nil {
-				encKey = enc
+			if sshKey != "" {
+				if enc, err := novacrypto.Encrypt(sshKey, cryptoKey); err == nil {
+					encKey = enc
+				}
 			}
 		}
 	}
@@ -1029,7 +1037,7 @@ func autoRegisterHostServer(pool *pgxpool.Pool) {
 	}
 
 	if count > 0 {
-		// Master already exists — backfill SSH credentials if they are empty
+		// Master already exists — backfill credentials and local flag
 		pool.QueryRow(ctx, "SELECT id FROM servers WHERE role = 'master' LIMIT 1").Scan(&serverID)
 		if serverID != "" {
 			pool.Exec(ctx,
@@ -1037,33 +1045,43 @@ func autoRegisterHostServer(pool *pgxpool.Pool) {
 				 SET ssh_user     = CASE WHEN COALESCE(ssh_user,'') = '' OR ssh_user = 'root' THEN $1 ELSE ssh_user END,
 				     ssh_password = CASE WHEN COALESCE(ssh_password,'') = '' THEN $2 ELSE ssh_password END,
 				     ssh_key      = CASE WHEN COALESCE(ssh_key,'') = ''      THEN $3 ELSE ssh_key END,
-				     auth_method  = CASE WHEN COALESCE(auth_method,'') = '' OR auth_method = 'password' THEN $4 ELSE auth_method END,
-				     ip_address   = $5
-				 WHERE id = $6`,
-				sshUser, encPassword, encKey, authMethod, ip, serverID,
+				     auth_method  = $4,
+				     is_local     = $5,
+				     ip_address   = $6
+				 WHERE id = $7`,
+				sshUser, encPassword, encKey, authMethod, isLocal, ip, serverID,
 			)
-			log.Printf("✓ Host server SSH credentials refreshed (user=%s, auth=%s)", sshUser, authMethod)
+			if isLocal {
+				log.Printf("✓ Host server set to local execution mode (no SSH required)")
+			} else {
+				log.Printf("✓ Host server SSH credentials refreshed (user=%s, auth=%s)", sshUser, authMethod)
+			}
 			autoDiscoverServices(pool, serverID)
 		}
 		return
 	}
 
-	// Insert new master server with full SSH credentials
+	// Insert new master server
 	err := pool.QueryRow(ctx,
 		`INSERT INTO servers
 		   (name, hostname, ip_address, port, os, role, status, agent_status,
-		    ssh_user, ssh_password, ssh_key, auth_method)
-		 VALUES ($1, $2, $3, 22, $4, 'master', 'active', 'connected', $5, $6, $7, $8)
+		    ssh_user, ssh_password, ssh_key, auth_method, is_local)
+		 VALUES ($1, $2, $3, 22, $4, 'master', 'active', 'connected', $5, $6, $7, $8, $9)
 		 RETURNING id`,
 		"NovaPanel Host", hostname, ip, osInfo,
-		sshUser, encPassword, encKey, authMethod,
+		sshUser, encPassword, encKey, authMethod, isLocal,
 	).Scan(&serverID)
 	if err != nil {
 		log.Printf("Warning: failed to auto-register host server: %v", err)
 		return
 	}
-	log.Printf("✓ Auto-registered host server: %s (%s) — %s (user=%s, auth=%s)",
-		hostname, ip, osInfo, sshUser, authMethod)
+	if isLocal {
+		log.Printf("✓ Auto-registered host server: %s (%s) — local execution mode (no SSH)",
+			hostname, ip)
+	} else {
+		log.Printf("✓ Auto-registered host server: %s (%s) — %s (user=%s, auth=%s)",
+			hostname, ip, osInfo, sshUser, authMethod)
+	}
 
 	autoDiscoverServices(pool, serverID)
 }
