@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings2, User, Lock, Bell, Save, Loader, Key, Shield, Monitor, Plus, Trash2, Copy, Check, QrCode, X, LogOut } from 'lucide-react';
+import { Settings2, User, Lock, Bell, Save, Loader, Key, Shield, Monitor, Plus, Trash2, Copy, Check, QrCode, X, LogOut, Mail, CreditCard, Send } from 'lucide-react';
 import { settingsService } from '../services/billing';
 import { authService } from '../services/auth';
 import { useToast } from '../components/ui/ToastProvider';
@@ -38,9 +38,19 @@ export default function Settings() {
     const [sessions, setSessions] = useState<any[]>([]);
     const [sessionsLoading, setSessionsLoading] = useState(false);
 
+    // System settings (admin)
+    const [userRole, setUserRole] = useState('');
+    const [smtpSettings, setSmtpSettings] = useState({ smtp_host: '', smtp_port: '587', smtp_user: '', smtp_password: '', smtp_from: '' });
+    const [stripeSettings, setStripeSettings] = useState({ stripe_secret_key: '', stripe_webhook_secret: '', stripe_price_enterprise: '', stripe_price_reseller: '' });
+    const [systemLoading, setSystemLoading] = useState(false);
+    const [testingSmtp, setTestingSmtp] = useState(false);
+
     useEffect(() => {
         settingsService.getProfile()
-            .then(data => setProfile({ name: data.name || '', email: data.email || '' }))
+            .then(data => {
+                setProfile({ name: data.name || '', email: data.email || '' });
+                setUserRole(data.role || '');
+            })
             .catch(() => setProfile({ name: 'Admin User', email: 'admin@novapanel.io' }))
             .finally(() => setLoading(false));
     }, []);
@@ -48,6 +58,7 @@ export default function Settings() {
     useEffect(() => {
         if (activeTab === 'api-keys') loadApiKeys();
         if (activeTab === 'sessions') loadSessions();
+        if (activeTab === 'smtp' || activeTab === 'stripe') loadSystemSettings();
     }, [activeTab]);
 
     const loadApiKeys = async () => {
@@ -157,6 +168,56 @@ export default function Settings() {
         } catch { toast.error('Failed to revoke sessions'); }
     };
 
+    const loadSystemSettings = async () => {
+        setSystemLoading(true);
+        try {
+            const data = await settingsService.getSystemSettings();
+            setSmtpSettings({
+                smtp_host: data.smtp_host || '',
+                smtp_port: data.smtp_port || '587',
+                smtp_user: data.smtp_user || '',
+                smtp_password: data.smtp_password || '',
+                smtp_from: data.smtp_from || '',
+            });
+            setStripeSettings({
+                stripe_secret_key: data.stripe_secret_key || '',
+                stripe_webhook_secret: data.stripe_webhook_secret || '',
+                stripe_price_enterprise: data.stripe_price_enterprise || '',
+                stripe_price_reseller: data.stripe_price_reseller || '',
+            });
+        } catch { toast.error('Failed to load system settings'); }
+        finally { setSystemLoading(false); }
+    };
+
+    const handleSaveSmtp = async () => {
+        setSaving(true);
+        try {
+            await settingsService.updateSystemSettings(smtpSettings);
+            toast.success('SMTP settings saved');
+        } catch { toast.error('Failed to save SMTP settings'); }
+        finally { setSaving(false); }
+    };
+
+    const handleTestSmtp = async () => {
+        setTestingSmtp(true);
+        try {
+            await settingsService.testSmtp();
+            toast.success('Test email sent — check your inbox');
+        } catch (e: any) {
+            toast.error(e?.message || 'SMTP test failed');
+        } finally { setTestingSmtp(false); }
+    };
+
+    const handleSaveStripe = async () => {
+        setSaving(true);
+        try {
+            await settingsService.updateSystemSettings(stripeSettings);
+            toast.success('Stripe settings saved');
+        } catch { toast.error('Failed to save Stripe settings'); }
+        finally { setSaving(false); }
+    };
+
+    const isAdmin = userRole === 'admin';
     const tabs = [
         { id: 'profile', label: 'Profile', icon: User },
         { id: 'security', label: 'Password', icon: Lock },
@@ -164,6 +225,10 @@ export default function Settings() {
         { id: 'api-keys', label: 'API Keys', icon: Key },
         { id: 'sessions', label: 'Sessions', icon: Monitor },
         { id: 'notifications', label: 'Notifications', icon: Bell },
+        ...(isAdmin ? [
+            { id: 'smtp', label: 'SMTP / Email', icon: Mail },
+            { id: 'stripe', label: 'Stripe Billing', icon: CreditCard },
+        ] : []),
     ];
 
     const scopeOptions = ['read', 'write', 'deploy', 'admin'];
@@ -424,6 +489,98 @@ export default function Settings() {
                                             </button>
                                         </div>
                                     ))}
+                                </div>
+                            )}
+                        </div>
+
+                    ) : activeTab === 'smtp' ? (
+                        <div className="glass-card rounded-2xl p-6 space-y-6">
+                            <div>
+                                <h3 className="text-lg font-bold text-white flex items-center gap-2"><Mail className="w-5 h-5 text-nova-400" /> SMTP Configuration</h3>
+                                <p className="text-sm text-surface-200/50 mt-1">Used for password reset and alert notification emails. Changes take effect immediately.</p>
+                            </div>
+                            {systemLoading ? (
+                                <div className="flex items-center justify-center py-10"><Loader className="w-5 h-5 text-nova-400 animate-spin" /></div>
+                            ) : (
+                                <div className="space-y-4 max-w-lg">
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div className="col-span-2">
+                                            <label className="block text-sm font-medium text-surface-200 mb-1.5">SMTP Host</label>
+                                            <input value={smtpSettings.smtp_host} onChange={e => setSmtpSettings(s => ({ ...s, smtp_host: e.target.value }))}
+                                                className={inputCls} placeholder="smtp.gmail.com" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-surface-200 mb-1.5">Port</label>
+                                            <input value={smtpSettings.smtp_port} onChange={e => setSmtpSettings(s => ({ ...s, smtp_port: e.target.value }))}
+                                                className={inputCls} placeholder="587" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">Username</label>
+                                        <input value={smtpSettings.smtp_user} onChange={e => setSmtpSettings(s => ({ ...s, smtp_user: e.target.value }))}
+                                            className={inputCls} placeholder="you@example.com" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">Password</label>
+                                        <input type="password" value={smtpSettings.smtp_password} onChange={e => setSmtpSettings(s => ({ ...s, smtp_password: e.target.value }))}
+                                            className={inputCls} placeholder={smtpSettings.smtp_password === '••••••••' ? 'Saved — enter new password to change' : '••••••••'} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">From Address</label>
+                                        <input value={smtpSettings.smtp_from} onChange={e => setSmtpSettings(s => ({ ...s, smtp_from: e.target.value }))}
+                                            className={inputCls} placeholder="NovaPanel <noreply@example.com>" />
+                                    </div>
+                                    <div className="flex gap-3 pt-2">
+                                        <button onClick={handleSaveSmtp} disabled={saving} className={btnPrimary}>
+                                            {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
+                                        </button>
+                                        <button onClick={handleTestSmtp} disabled={testingSmtp || saving} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 text-surface-200/70 text-sm hover:bg-white/5 transition-colors disabled:opacity-50">
+                                            {testingSmtp ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send Test Email
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                    ) : activeTab === 'stripe' ? (
+                        <div className="glass-card rounded-2xl p-6 space-y-6">
+                            <div>
+                                <h3 className="text-lg font-bold text-white flex items-center gap-2"><CreditCard className="w-5 h-5 text-nova-400" /> Stripe Configuration</h3>
+                                <p className="text-sm text-surface-200/50 mt-1">Required for subscription billing. Get your keys from the <span className="text-nova-400">Stripe Dashboard</span>.</p>
+                            </div>
+                            {systemLoading ? (
+                                <div className="flex items-center justify-center py-10"><Loader className="w-5 h-5 text-nova-400 animate-spin" /></div>
+                            ) : (
+                                <div className="space-y-4 max-w-lg">
+                                    <div>
+                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">Secret Key</label>
+                                        <input type="password" value={stripeSettings.stripe_secret_key} onChange={e => setStripeSettings(s => ({ ...s, stripe_secret_key: e.target.value }))}
+                                            className={inputCls} placeholder={stripeSettings.stripe_secret_key === '••••••••' ? 'Saved — enter new key to change' : 'sk_live_...'} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">Webhook Secret</label>
+                                        <input type="password" value={stripeSettings.stripe_webhook_secret} onChange={e => setStripeSettings(s => ({ ...s, stripe_webhook_secret: e.target.value }))}
+                                            className={inputCls} placeholder={stripeSettings.stripe_webhook_secret === '••••••••' ? 'Saved — enter new secret to change' : 'whsec_...'} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-sm font-medium text-surface-200 mb-1.5">Enterprise Price ID</label>
+                                            <input value={stripeSettings.stripe_price_enterprise} onChange={e => setStripeSettings(s => ({ ...s, stripe_price_enterprise: e.target.value }))}
+                                                className={inputCls} placeholder="price_..." />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-surface-200 mb-1.5">Reseller Price ID</label>
+                                            <input value={stripeSettings.stripe_price_reseller} onChange={e => setStripeSettings(s => ({ ...s, stripe_price_reseller: e.target.value }))}
+                                                className={inputCls} placeholder="price_..." />
+                                        </div>
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-surface-800/50 border border-surface-700/30 text-xs text-surface-200/50 space-y-1">
+                                        <p>Webhook endpoint to register in Stripe Dashboard:</p>
+                                        <code className="text-nova-400 font-mono">{window.location.origin}/api/v1/billing/webhook</code>
+                                    </div>
+                                    <button onClick={handleSaveStripe} disabled={saving} className={btnPrimary}>
+                                        {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Stripe Settings
+                                    </button>
                                 </div>
                             )}
                         </div>

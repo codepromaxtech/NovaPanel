@@ -254,7 +254,7 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 	appHandler := handlers.NewAppHandler(appService, pool)
 	securityHandler := handlers.NewSecurityHandler(securityService)
 	billingHandler := handlers.NewBillingHandler(billingService)
-	settingsHandler := handlers.NewSettingsHandler(pool)
+	settingsHandler := handlers.NewSettingsHandler(pool, smtpSvc, cfg.EncryptionKey)
 	auditHandler := handlers.NewAuditHandler(pool)
 	metricsHandler := handlers.NewMetricsHandler(metricsService)
 	sshHandler := handlers.NewSSHHandler(serverService)
@@ -696,6 +696,10 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 				settings.GET("/api-keys", apiKeyHandler.List)
 				settings.POST("/api-keys", apiKeyHandler.Create)
 				settings.DELETE("/api-keys/:id", apiKeyHandler.Revoke)
+				// System settings — admin only
+				settings.GET("/system", middleware.RequireAdmin(), settingsHandler.GetSystemSettings)
+				settings.PUT("/system", middleware.RequireAdmin(), settingsHandler.UpdateSystemSettings)
+				settings.POST("/system/test-smtp", middleware.RequireAdmin(), settingsHandler.TestSMTP)
 			}
 
 			// Alert rules and incidents

@@ -53,4 +53,18 @@ export const settingsService = {
     async revokeApiKey(id: string) {
         await api.delete(`/settings/api-keys/${id}`);
     },
+
+    // ── System Settings (admin only) ──
+    async getSystemSettings(): Promise<Record<string, string>> {
+        const { data } = await api.get('/settings/system');
+        return data;
+    },
+    async updateSystemSettings(payload: Record<string, string>) {
+        const { data } = await api.put('/settings/system', payload);
+        return data;
+    },
+    async testSmtp() {
+        const { data } = await api.post('/settings/system/test-smtp');
+        return data;
+    },
 };
