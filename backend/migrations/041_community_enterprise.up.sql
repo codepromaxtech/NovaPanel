@@ -144,8 +144,8 @@ CREATE TABLE IF NOT EXISTS reseller_quotas (
 CREATE INDEX IF NOT EXISTS idx_reseller_quotas_reseller ON reseller_quotas(reseller_id);
 CREATE INDEX IF NOT EXISTS idx_reseller_quotas_client   ON reseller_quotas(client_id);
 
--- 11. DKIM record storage on email domains
-ALTER TABLE email_domains
+-- 11. DKIM record storage on domains
+ALTER TABLE domains
   ADD COLUMN IF NOT EXISTS dkim_record TEXT;
 
 -- 12. Missing performance indexes
