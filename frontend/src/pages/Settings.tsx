@@ -48,6 +48,15 @@ export default function Settings() {
     const [systemLoading, setSystemLoading] = useState(false);
     const [testingSmtp, setTestingSmtp] = useState(false);
 
+    // License (admin)
+    const [licenseStatus, setLicenseStatus] = useState<{
+        valid: boolean; plan_type: string; expires_at: string; days_left: number;
+        is_trial: boolean; message: string; checked_at: string;
+    } | null>(null);
+    const [licenseKey, setLicenseKey] = useState('');
+    const [licenseLoading, setLicenseLoading] = useState(false);
+    const [licenseActivating, setLicenseActivating] = useState(false);
+
     // Updates (admin)
     const [updateStatus, setUpdateStatus] = useState<{
         current_version: string; latest_version: string; update_available: boolean;
@@ -73,6 +82,7 @@ export default function Settings() {
         if (activeTab === 'sessions') loadSessions();
         if (activeTab === 'smtp' || activeTab === 'stripe') loadSystemSettings();
         if (activeTab === 'updates') loadUpdateStatus();
+        if (activeTab === 'license') loadLicenseStatus();
     }, [activeTab]);
 
     const loadApiKeys = async () => {
@@ -237,6 +247,48 @@ export default function Settings() {
         finally { setUpdateLoading(false); }
     };
 
+    const loadLicenseStatus = async () => {
+        setLicenseLoading(true);
+        try {
+            const res = await fetch('/api/v1/settings/license', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+            if (res.ok) setLicenseStatus(await res.json());
+        } catch { /* not critical */ }
+        finally { setLicenseLoading(false); }
+    };
+
+    const handleActivateLicense = async () => {
+        if (!licenseKey.trim()) return;
+        setLicenseActivating(true);
+        try {
+            const res = await fetch('/api/v1/settings/license/activate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+                body: JSON.stringify({ license_key: licenseKey.trim() }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setLicenseStatus(data.status);
+                setLicenseKey('');
+                toast.success(`License activated — ${data.status.plan_type} plan`);
+            } else {
+                toast.error(data.message || data.error || 'Invalid license key');
+            }
+        } catch { toast.error('Failed to activate license'); }
+        finally { setLicenseActivating(false); }
+    };
+
+    const handleRefreshLicense = async () => {
+        setLicenseLoading(true);
+        try {
+            const res = await fetch('/api/v1/settings/license/refresh', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            });
+            if (res.ok) { setLicenseStatus(await res.json()); toast.success('License refreshed'); }
+        } catch { toast.error('Failed to refresh'); }
+        finally { setLicenseLoading(false); }
+    };
+
     const handleCheckUpdates = async () => {
         setChecking(true);
         try {
@@ -286,6 +338,7 @@ export default function Settings() {
             { id: 'smtp', label: 'SMTP / Email', icon: Mail },
             { id: 'stripe', label: 'Stripe Billing', icon: CreditCard },
             { id: 'updates', label: 'Updates', icon: Download },
+            { id: 'license', label: 'License', icon: Key },
         ] : []),
     ];
 
@@ -641,6 +694,110 @@ export default function Settings() {
                                     </button>
                                 </div>
                             )}
+                        </div>
+
+                    ) : activeTab === 'license' ? (
+                        <div className="glass-card rounded-2xl p-6 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <Key className="w-5 h-5 text-nova-400" /> License
+                                    </h3>
+                                    <p className="text-sm text-surface-200/50 mt-1">Manage your NovaPanel license key.</p>
+                                </div>
+                                <button onClick={handleRefreshLicense} disabled={licenseLoading}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-700/50 text-sm text-surface-200/70 hover:text-white hover:bg-surface-700 transition-all disabled:opacity-50">
+                                    <RefreshCw className={`w-4 h-4 ${licenseLoading ? 'animate-spin' : ''}`} /> Refresh
+                                </button>
+                            </div>
+
+                            {licenseLoading && !licenseStatus ? (
+                                <div className="flex items-center justify-center py-10"><Loader className="w-5 h-5 text-nova-400 animate-spin" /></div>
+                            ) : licenseStatus ? (() => {
+                                const planColor =
+                                    licenseStatus.plan_type === 'enterprise' ? 'text-nova-400 bg-nova-500/10 border-nova-500/30' :
+                                    licenseStatus.plan_type === 'reseller'   ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' :
+                                    licenseStatus.plan_type === 'trial'      ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30' :
+                                                                               'text-surface-200/50 bg-surface-800/50 border-surface-700/30';
+                                return (
+                                    <>
+                                        {/* Plan badge */}
+                                        <div className={`flex items-center justify-between p-4 rounded-xl border ${planColor}`}>
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-2.5 h-2.5 rounded-full ${licenseStatus.valid ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+                                                <div>
+                                                    <p className="text-sm font-semibold text-white capitalize">
+                                                        {licenseStatus.plan_type === 'trial' ? '15-Day Trial' : `${licenseStatus.plan_type} Edition`}
+                                                    </p>
+                                                    <p className="text-xs text-surface-200/50 mt-0.5">
+                                                        {licenseStatus.is_trial && licenseStatus.days_left > 0
+                                                            ? `${licenseStatus.days_left} days remaining — upgrade to keep Enterprise features`
+                                                            : licenseStatus.plan_type === 'community'
+                                                            ? licenseStatus.message || 'Enter a license key below to unlock Enterprise features'
+                                                            : licenseStatus.expires_at
+                                                            ? `Expires ${new Date(licenseStatus.expires_at).toLocaleDateString()}`
+                                                            : 'Lifetime license'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <span className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-lg border ${planColor}`}>
+                                                {licenseStatus.plan_type}
+                                            </span>
+                                        </div>
+
+                                        {/* Trial expiry warning */}
+                                        {licenseStatus.is_trial && licenseStatus.days_left <= 5 && licenseStatus.days_left >= 0 && (
+                                            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+                                                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                                                <div>
+                                                    <p className="text-sm font-medium text-red-300">Trial expires in {licenseStatus.days_left} day{licenseStatus.days_left !== 1 ? 's' : ''}</p>
+                                                    <p className="text-xs text-surface-200/50 mt-0.5">After expiry, NovaPanel will automatically switch to Community Edition (1 server, 3 domains).</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {licenseStatus.plan_type === 'community' && !licenseStatus.is_trial && (
+                                            <div className="flex items-start gap-3 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30">
+                                                <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                                                <div>
+                                                    <p className="text-sm font-medium text-yellow-300">Community Edition — limited features</p>
+                                                    <p className="text-xs text-surface-200/50 mt-0.5">1 server · 3 domains · 2 databases · No WAF, Firewall, or Team features.</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Last verified */}
+                                        {licenseStatus.checked_at && (
+                                            <p className="text-xs text-surface-200/30">
+                                                Last verified: {new Date(licenseStatus.checked_at).toLocaleString()} · License server checks every 6 hours automatically.
+                                            </p>
+                                        )}
+                                    </>
+                                );
+                            })() : null}
+
+                            {/* Activate license key */}
+                            <div className="pt-2 border-t border-white/5 space-y-3">
+                                <p className="text-sm font-medium text-surface-200">Activate License Key</p>
+                                <p className="text-xs text-surface-200/40">
+                                    Purchase a license at <span className="text-nova-400">codepromax.com.de</span> and paste your key below.
+                                    The key is verified immediately and saved securely.
+                                </p>
+                                <div className="flex gap-3">
+                                    <input
+                                        type="text"
+                                        value={licenseKey}
+                                        onChange={e => setLicenseKey(e.target.value)}
+                                        placeholder="XXXX-XXXX-XXXX-XXXX"
+                                        className={`${inputCls} flex-1 font-mono tracking-wider`}
+                                    />
+                                    <button onClick={handleActivateLicense} disabled={licenseActivating || !licenseKey.trim()}
+                                        className={`${btnPrimary} flex-shrink-0`}>
+                                        {licenseActivating ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                                        {licenseActivating ? 'Verifying...' : 'Activate'}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                     ) : activeTab === 'updates' ? (

@@ -376,6 +376,7 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 	// License service — verifies license key against CodeProMax license server
 	licenseSvc := services.NewLicenseService(pool, cfg)
 	licenseSvc.RunBackgroundChecker(context.Background())
+	licenseHandler := handlers.NewLicenseHandler(licenseSvc)
 
 	// Set up Gin router
 	if cfg.Env == "production" {
@@ -730,6 +731,10 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 				settings.GET("/updates", middleware.RequireAdmin(), updateHandler.GetStatus)
 				settings.POST("/updates/check", middleware.RequireAdmin(), updateHandler.CheckNow)
 				settings.POST("/updates/apply", middleware.RequireAdmin(), updateHandler.ApplyUpdate)
+				// License — admin only
+				settings.GET("/license", middleware.RequireAdmin(), licenseHandler.GetStatus)
+				settings.POST("/license/activate", middleware.RequireAdmin(), licenseHandler.Activate)
+				settings.POST("/license/refresh", middleware.RequireAdmin(), licenseHandler.Refresh)
 			}
 
 			// Alert rules and incidents
