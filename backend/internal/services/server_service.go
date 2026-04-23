@@ -48,29 +48,53 @@ func (s *ServerService) Create(ctx context.Context, req models.CreateServerReque
 		authMethod = req.AuthMethod
 	}
 
-	// Encrypt SSH credentials before storing
-	encPassword, encKey := req.SSHPassword, req.SSHKey
+	connectType := req.ConnectType
+	if connectType == "" {
+		connectType = "ssh"
+	}
+
+	// Encrypt secrets before storing
+	encPassword, encKey, encCFClientID, encCFClientSecret :=
+		req.SSHPassword, req.SSHKey, req.CFClientID, req.CFClientSecret
 	if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
-		if req.SSHPassword != "" {
-			if enc, err := novacrypto.Encrypt(req.SSHPassword, cryptoKey); err == nil {
-				encPassword = enc
+		enc := func(plain string) string {
+			if plain == "" {
+				return ""
 			}
-		}
-		if req.SSHKey != "" {
-			if enc, err := novacrypto.Encrypt(req.SSHKey, cryptoKey); err == nil {
-				encKey = enc
+			if v, err := novacrypto.Encrypt(plain, cryptoKey); err == nil {
+				return v
 			}
+			return plain
 		}
+		encPassword = enc(req.SSHPassword)
+		encKey = enc(req.SSHKey)
+		encCFClientID = enc(req.CFClientID)
+		encCFClientSecret = enc(req.CFClientSecret)
+	}
+
+	// For Cloudflare servers ip_address may be empty — use cf_hostname as fallback
+	ipAddress := req.IPAddress
+	if ipAddress == "" {
+		ipAddress = req.CFHostname
 	}
 
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO servers (name, hostname, ip_address, port, os, role, status, agent_status, ssh_user, ssh_key, ssh_password, auth_method)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		 RETURNING id, name, hostname, host(ip_address), port, os, role, status, agent_version, agent_status, ssh_user, ssh_key, ssh_password, auth_method, created_at, updated_at`,
-		req.Name, req.Hostname, req.IPAddress, port, req.OS, role, "pending", "disconnected", sshUser, encKey, encPassword, authMethod,
+		`INSERT INTO servers
+		   (name, hostname, ip_address, port, os, role, status, agent_status,
+		    ssh_user, ssh_key, ssh_password, auth_method,
+		    connect_type, cf_hostname, cf_client_id, cf_client_secret)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+		 RETURNING id, name, hostname, host(ip_address), port, os, role, status,
+		           agent_version, agent_status, ssh_user, ssh_key, ssh_password,
+		           auth_method, COALESCE(connect_type,'ssh'), COALESCE(cf_hostname,''),
+		           created_at, updated_at`,
+		req.Name, req.Hostname, ipAddress, port, req.OS, role, "pending", "disconnected",
+		sshUser, encKey, encPassword, authMethod,
+		connectType, req.CFHostname, encCFClientID, encCFClientSecret,
 	).Scan(&server.ID, &server.Name, &server.Hostname, &server.IPAddress, &server.Port,
 		&server.OS, &server.Role, &server.Status, &server.AgentVersion, &server.AgentStatus,
 		&server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod,
+		&server.ConnectType, &server.CFHostname,
 		&server.CreatedAt, &server.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -90,37 +114,9 @@ func (s *ServerService) Create(ctx context.Context, req models.CreateServerReque
 	return server, nil
 }
 
-// GetDecryptedSSH returns decrypted SSH credentials for a server (for provisioner use)
+// GetDecryptedSSH returns decrypted connection credentials for a server (for provisioner use)
 func (s *ServerService) GetDecryptedSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
-	var server provisioner.ServerInfo
-	var port int
-	var encKey, encPassword string
-	err := s.db.QueryRow(ctx,
-		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password'), COALESCE(is_local, FALSE)
-		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod, &server.IsLocal)
-	if err != nil {
-		return server, err
-	}
-	server.Port = port
-
-	// Decrypt credentials
-	if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
-		if encPassword != "" {
-			if dec, err := novacrypto.Decrypt(encPassword, cryptoKey); err == nil {
-				encPassword = dec
-			}
-		}
-		if encKey != "" {
-			if dec, err := novacrypto.Decrypt(encKey, cryptoKey); err == nil {
-				encKey = dec
-			}
-		}
-	}
-
-	server.SSHPassword = encPassword
-	server.SSHKey = encKey
-	return server, nil
+	return GetServerInfo(ctx, s.db, serverID)
 }
 
 func (s *ServerService) GetByID(ctx context.Context, id string) (*models.Server, error) {
@@ -233,33 +229,39 @@ func (s *ServerService) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// TestConnection validates SSH credentials by connecting and running hostname
+// TestConnection validates connection credentials by connecting and running hostname
 func (s *ServerService) TestConnection(ctx context.Context, req models.TestConnectionRequest) (string, error) {
-	port := 22
-	if req.Port > 0 {
-		port = req.Port
-	}
-	sshUser := "root"
-	if req.SSHUser != "" {
-		sshUser = req.SSHUser
-	}
-	authMethod := "password"
-	if req.AuthMethod != "" {
-		authMethod = req.AuthMethod
+	connectType := req.ConnectType
+	if connectType == "" {
+		connectType = "ssh"
 	}
 
 	server := provisioner.ServerInfo{
-		IPAddress:   req.IPAddress,
-		Port:        port,
-		SSHUser:     sshUser,
-		SSHKey:      req.SSHKey,
-		SSHPassword: req.SSHPassword,
-		AuthMethod:  authMethod,
+		IPAddress:      req.IPAddress,
+		SSHUser:        req.SSHUser,
+		SSHKey:         req.SSHKey,
+		SSHPassword:    req.SSHPassword,
+		AuthMethod:     req.AuthMethod,
+		ConnectType:    connectType,
+		CFHostname:     req.CFHostname,
+		CFClientID:     req.CFClientID,
+		CFClientSecret: req.CFClientSecret,
+	}
+	if req.Port > 0 {
+		server.Port = req.Port
+	} else {
+		server.Port = 22
+	}
+	if server.SSHUser == "" {
+		server.SSHUser = "root"
+	}
+	if server.AuthMethod == "" {
+		server.AuthMethod = "password"
 	}
 
-	output, err := provisioner.RunScriptAsUser(server, "hostname && echo '---' && uname -a && echo '---' && uptime")
+	output, err := provisioner.RunScript(server, "hostname && echo '---' && uname -a && echo '---' && uptime")
 	if err != nil {
-		return "", fmt.Errorf("SSH connection failed: %w", err)
+		return "", fmt.Errorf("connection failed: %w", err)
 	}
 	return strings.TrimSpace(output), nil
 }
@@ -338,6 +340,38 @@ func (s *ServerService) Update(ctx context.Context, id string, req models.Update
 		args = append(args, req.AuthMethod)
 		argIdx++
 	}
+	if req.ConnectType != "" {
+		setClauses = append(setClauses, fmt.Sprintf("connect_type = $%d", argIdx))
+		args = append(args, req.ConnectType)
+		argIdx++
+	}
+	if req.CFHostname != "" {
+		setClauses = append(setClauses, fmt.Sprintf("cf_hostname = $%d", argIdx))
+		args = append(args, req.CFHostname)
+		argIdx++
+	}
+	if req.CFClientID != "" {
+		encID := req.CFClientID
+		if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
+			if enc, err := novacrypto.Encrypt(req.CFClientID, cryptoKey); err == nil {
+				encID = enc
+			}
+		}
+		setClauses = append(setClauses, fmt.Sprintf("cf_client_id = $%d", argIdx))
+		args = append(args, encID)
+		argIdx++
+	}
+	if req.CFClientSecret != "" {
+		encSecret := req.CFClientSecret
+		if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
+			if enc, err := novacrypto.Encrypt(req.CFClientSecret, cryptoKey); err == nil {
+				encSecret = enc
+			}
+		}
+		setClauses = append(setClauses, fmt.Sprintf("cf_client_secret = $%d", argIdx))
+		args = append(args, encSecret)
+		argIdx++
+	}
 
 	if len(setClauses) == 0 {
 		return nil, fmt.Errorf("no fields to update")
@@ -353,6 +387,7 @@ func (s *ServerService) Update(ctx context.Context, id string, req models.Update
 		 RETURNING id, name, hostname, host(ip_address), port, os, role, status,
 		           COALESCE(agent_version, ''), COALESCE(agent_status, 'disconnected'),
 		           ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password'),
+		           COALESCE(connect_type, 'ssh'), COALESCE(cf_hostname, ''),
 		           created_at, updated_at`,
 		strings.Join(setClauses, ", "), argIdx,
 	)
@@ -362,6 +397,7 @@ func (s *ServerService) Update(ctx context.Context, id string, req models.Update
 		&server.ID, &server.Name, &server.Hostname, &server.IPAddress, &server.Port,
 		&server.OS, &server.Role, &server.Status, &server.AgentVersion, &server.AgentStatus,
 		&server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod,
+		&server.ConnectType, &server.CFHostname,
 		&server.CreatedAt, &server.UpdatedAt,
 	)
 	if err != nil {

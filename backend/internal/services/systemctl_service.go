@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/provisioner"
 )
 
@@ -19,32 +18,7 @@ func NewSystemctlService(pool *pgxpool.Pool) *SystemctlService {
 }
 
 func (s *SystemctlService) getServer(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
-	var server provisioner.ServerInfo
-	var port int
-	var encKey, encPassword string
-	err := s.pool.QueryRow(ctx,
-		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password'), COALESCE(is_local, FALSE)
-		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod, &server.IsLocal)
-	if err != nil {
-		return server, err
-	}
-	server.Port = port
-	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
-		if encKey != "" {
-			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
-				encKey = dec
-			}
-		}
-		if encPassword != "" {
-			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
-				encPassword = dec
-			}
-		}
-	}
-	server.SSHKey = encKey
-	server.SSHPassword = encPassword
-	return server, nil
+	return GetServerInfo(ctx, s.pool, serverID)
 }
 
 // ListServices lists all active/loaded services

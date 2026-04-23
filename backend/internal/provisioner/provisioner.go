@@ -3,8 +3,10 @@ package provisioner
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -19,8 +21,14 @@ type ServerInfo struct {
 	SSHUser     string
 	SSHKey      string
 	SSHPassword string
-	AuthMethod  string // "password" or "key"
+	AuthMethod  string // "password", "key", or "local"
 	IsLocal     bool   // true = run via nsenter on host, no SSH needed
+
+	// Cloudflare Access SSH tunnel fields (connect_type == "cloudflare")
+	ConnectType    string // "ssh" | "cloudflare" | "local"
+	CFHostname     string // e.g. "ssh.gigaza.org"
+	CFClientID     string // Cloudflare Access Service Token client ID
+	CFClientSecret string // Cloudflare Access Service Token client secret
 }
 
 // Result holds the output of a provisioning step
@@ -31,11 +39,15 @@ type Result struct {
 	Duration  string `json:"duration"`
 }
 
-// RunScript runs a shell script on the server, routing to local nsenter or SSH.
-// Automatically wraps the script with sudo when the SSH user is not root.
+// RunScript runs a shell script on the server, routing to local nsenter,
+// Cloudflare Access SSH tunnel, or direct SSH as appropriate.
 func RunScript(server ServerInfo, script string) (string, error) {
-	if server.IsLocal {
+	if server.IsLocal || server.ConnectType == "local" {
 		return RunScriptLocally(script)
+	}
+	if server.ConnectType == "cloudflare" {
+		needsSudo := server.SSHUser != "" && server.SSHUser != "root"
+		return runCloudflareSSH(server, script, needsSudo)
 	}
 	needsSudo := server.SSHUser != "" && server.SSHUser != "root"
 	return runSSH(server, script, needsSudo)
@@ -43,30 +55,129 @@ func RunScript(server ServerInfo, script string) (string, error) {
 
 // RunScriptAsUser runs a script as the logged-in user (no sudo).
 func RunScriptAsUser(server ServerInfo, script string) (string, error) {
-	if server.IsLocal {
+	if server.IsLocal || server.ConnectType == "local" {
 		return RunScriptLocally(script)
+	}
+	if server.ConnectType == "cloudflare" {
+		return runCloudflareSSH(server, script, false)
 	}
 	return runSSH(server, script, false)
 }
 
 // RunScriptAsSystemUser runs a script as a specific system user.
 func RunScriptAsSystemUser(server ServerInfo, systemUser string, script string) (string, error) {
-	if server.IsLocal {
+	wrapSudo := func(s string) string {
 		if systemUser == "" || systemUser == "root" {
-			return RunScriptLocally(script)
+			return s
 		}
-		wrapped := fmt.Sprintf("sudo -u '%s' bash -c '%s'",
+		return fmt.Sprintf("sudo -u '%s' bash -c '%s'",
 			strings.ReplaceAll(systemUser, "'", "'\"'\"'"),
-			strings.ReplaceAll(script, "'", "'\"'\"'"))
-		return RunScriptLocally(wrapped)
+			strings.ReplaceAll(s, "'", "'\"'\"'"))
+	}
+	if server.IsLocal || server.ConnectType == "local" {
+		return RunScriptLocally(wrapSudo(script))
+	}
+	if server.ConnectType == "cloudflare" {
+		return runCloudflareSSH(server, wrapSudo(script), false)
 	}
 	if systemUser == "" || systemUser == "root" {
 		return RunScript(server, script)
 	}
-	wrappedScript := fmt.Sprintf("sudo -u '%s' bash -c '%s'",
-		strings.ReplaceAll(systemUser, "'", "'\"'\"'"),
-		strings.ReplaceAll(script, "'", "'\"'\"'"))
-	return runSSH(server, wrappedScript, false)
+	return runSSH(server, wrapSudo(script), false)
+}
+
+// procConn wraps a subprocess stdin/stdout as a net.Conn so the Go SSH client
+// can use cloudflared as a transparent ProxyCommand.
+type procConn struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+}
+
+func (c *procConn) Read(b []byte) (int, error)  { return c.stdout.Read(b) }
+func (c *procConn) Write(b []byte) (int, error) { return c.stdin.Write(b) }
+func (c *procConn) Close() error {
+	c.stdin.Close()
+	c.stdout.Close()
+	_ = c.cmd.Process.Kill()
+	_ = c.cmd.Wait()
+	return nil
+}
+func (c *procConn) LocalAddr() net.Addr             { return &net.TCPAddr{} }
+func (c *procConn) RemoteAddr() net.Addr            { return &net.TCPAddr{} }
+func (c *procConn) SetDeadline(_ time.Time) error      { return nil }
+func (c *procConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (c *procConn) SetWriteDeadline(_ time.Time) error { return nil }
+
+// runCloudflareSSH connects via `cloudflared access ssh` as a ProxyCommand,
+// authenticating with a Cloudflare Access Service Token (non-interactive).
+// The SSH layer on top uses the usual key/password credentials.
+func runCloudflareSSH(server ServerInfo, script string, useSudo bool) (string, error) {
+	if server.CFHostname == "" {
+		return "", fmt.Errorf("cloudflare access: cf_hostname is not configured for this server")
+	}
+
+	cmd := exec.Command("cloudflared", "access", "ssh", "--hostname", server.CFHostname)
+	cmd.Env = append(os.Environ(),
+		"CF_ACCESS_CLIENT_ID="+server.CFClientID,
+		"CF_ACCESS_CLIENT_SECRET="+server.CFClientSecret,
+	)
+	cmd.Stderr = io.Discard // keep stderr away from SSH traffic
+
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		return "", fmt.Errorf("cloudflared stdin pipe: %w", err)
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("cloudflared stdout pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("cloudflared start: %w — is cloudflared installed?", err)
+	}
+
+	conn := &procConn{cmd: cmd, stdin: stdinPipe, stdout: stdoutPipe}
+	defer conn.Close()
+
+	sshCfg, err := buildSSHConfig(server)
+	if err != nil {
+		return "", err
+	}
+
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, server.CFHostname, sshCfg)
+	if err != nil {
+		return "", fmt.Errorf("SSH over Cloudflare tunnel to %s: %w", server.CFHostname, err)
+	}
+	client := ssh.NewClient(sshConn, chans, reqs)
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("ssh session: %w", err)
+	}
+	defer session.Close()
+
+	var stdout, stderr bytes.Buffer
+	session.Stdout = &stdout
+	session.Stderr = &stderr
+
+	innerScript := fmt.Sprintf("set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s", script)
+	wrappedScript := innerScript
+	if useSudo {
+		escaped := strings.ReplaceAll(innerScript, "'", "'\"'\"'")
+		if server.SSHPassword != "" {
+			escapedPass := strings.ReplaceAll(server.SSHPassword, "'", "'\"'\"'")
+			wrappedScript = fmt.Sprintf("echo '%s' | sudo -S bash -c '%s'", escapedPass, escaped)
+		} else {
+			wrappedScript = fmt.Sprintf("sudo -n bash -c '%s'", escaped)
+		}
+	}
+
+	if err := session.Run(wrappedScript); err != nil {
+		return stderr.String() + "\n" + stdout.String(),
+			fmt.Errorf("script failed: %w\nstderr: %s", err, stderr.String())
+	}
+	return stdout.String(), nil
 }
 
 // RunScriptLocally runs a script on the host system by entering host namespaces

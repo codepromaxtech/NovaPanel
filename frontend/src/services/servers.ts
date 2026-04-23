@@ -39,12 +39,16 @@ export const serverService = {
     },
 
     async testConnection(payload: {
-        ip_address: string;
+        ip_address?: string;
         port?: number;
         ssh_user?: string;
         ssh_key?: string;
         ssh_password?: string;
         auth_method?: string;
+        connect_type?: string;
+        cf_hostname?: string;
+        cf_client_id?: string;
+        cf_client_secret?: string;
     }): Promise<{ success: boolean; output: string }> {
         const { data } = await api.post('/servers/test-connection', payload);
         return data;
@@ -61,6 +65,10 @@ export const serverService = {
         ssh_key?: string;
         ssh_password?: string;
         auth_method?: string;
+        connect_type?: string;
+        cf_hostname?: string;
+        cf_client_id?: string;
+        cf_client_secret?: string;
     }): Promise<Server> {
         const { data } = await api.put(`/servers/${id}`, payload);
         return data;

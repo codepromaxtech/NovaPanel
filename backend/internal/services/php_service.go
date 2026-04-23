@@ -32,14 +32,7 @@ func NewPHPService(db *pgxpool.Pool) *PHPService {
 
 // getServerSSH retrieves SSH connection info for a server
 func (s *PHPService) getServerSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
-	var server provisioner.ServerInfo
-	var port int
-	err := s.db.QueryRow(ctx,
-		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password'), COALESCE(is_local, FALSE)
-		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &server.SSHKey, &server.SSHPassword, &server.AuthMethod, &server.IsLocal)
-	server.Port = port
-	return server, err
+	return GetServerInfo(ctx, s.db, serverID)
 }
 
 // ListInstalled returns all PHP versions installed on a server

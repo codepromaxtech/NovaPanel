@@ -20,7 +20,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 # Stage 3: Minimal runtime image
 FROM alpine:3.19
-RUN apk --no-cache add ca-certificates tzdata util-linux
+RUN apk --no-cache add ca-certificates tzdata util-linux curl && \
+    ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
+    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}" \
+      -o /usr/local/bin/cloudflared && \
+    chmod +x /usr/local/bin/cloudflared
 WORKDIR /app
 
 COPY --from=go-builder /app/novapanel-api .

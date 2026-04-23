@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
 	"github.com/novapanel/novapanel/internal/provisioner"
 )
@@ -272,34 +271,7 @@ func (s *DeployService) failDeployment(ctx context.Context, deploymentID string,
 }
 
 func (s *DeployService) getServerInfo(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
-	var server provisioner.ServerInfo
-	var port int
-	var encKey, encPassword string
-	err := s.pool.QueryRow(ctx,
-		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key, ''), COALESCE(ssh_password, ''), COALESCE(auth_method, 'password'), COALESCE(is_local, FALSE)
-		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&server.IPAddress, &port, &server.SSHUser, &encKey, &encPassword, &server.AuthMethod, &server.IsLocal)
-	if err != nil {
-		return server, err
-	}
-	server.Port = port
-	// Decrypt credentials if encryption key is configured
-	if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
-		if dec, err := novacrypto.Decrypt(encKey, cryptoKey); err == nil {
-			server.SSHKey = dec
-		} else {
-			server.SSHKey = encKey
-		}
-		if dec, err := novacrypto.Decrypt(encPassword, cryptoKey); err == nil {
-			server.SSHPassword = dec
-		} else {
-			server.SSHPassword = encPassword
-		}
-	} else {
-		server.SSHKey = encKey
-		server.SSHPassword = encPassword
-	}
-	return server, nil
+	return GetServerInfo(ctx, s.pool, serverID)
 }
 
 func (s *DeployService) getBuildScript(runtime, appDir string) string {

@@ -131,6 +131,8 @@ function OsDropdown({ currentOs, onSelect }: { currentOs: string; onSelect: (id:
 const emptyServer = {
     name: '', hostname: '', ip_address: '', port: 22, os: 'Ubuntu 24.04', role: 'worker',
     ssh_user: 'root', auth_method: 'password', ssh_key: '', ssh_password: '', modules: [] as string[],
+    connect_type: 'ssh' as 'ssh' | 'cloudflare',
+    cf_hostname: '', cf_client_id: '', cf_client_secret: '',
 };
 
 const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
@@ -214,8 +216,15 @@ export default function Servers() {
     }, []);
 
     const handleTestConnection = async () => {
-        if (!formData.ip_address) { setError('IP address is required to test connection'); return; }
-        if (!isValidIP(formData.ip_address)) { setError('Please enter a valid IPv4 or IPv6 address'); return; }
+        if (formData.connect_type === 'cloudflare' && !formData.cf_hostname) {
+            setError('CF Hostname is required to test Cloudflare connection'); return;
+        }
+        if (formData.connect_type === 'ssh' && !formData.ip_address) {
+            setError('IP address is required to test SSH connection'); return;
+        }
+        if (formData.connect_type === 'ssh' && formData.ip_address && !isValidIP(formData.ip_address)) {
+            setError('Please enter a valid IPv4 or IPv6 address'); return;
+        }
         setTesting(true);
         setTestResult(null);
         setError('');
@@ -227,23 +236,35 @@ export default function Servers() {
                 ssh_key: formData.ssh_key,
                 ssh_password: formData.ssh_password,
                 auth_method: formData.auth_method,
+                connect_type: formData.connect_type,
+                cf_hostname: formData.cf_hostname,
+                cf_client_id: formData.cf_client_id,
+                cf_client_secret: formData.cf_client_secret,
             });
             setTestResult(result);
-            toast.success('SSH connection successful!');
+            toast.success('Connection successful!');
         } catch (err: any) {
             setTestResult({ success: false, output: err?.response?.data?.error || 'Connection failed' });
-            toast.error('SSH connection failed');
+            toast.error('Connection failed');
         } finally {
             setTesting(false);
         }
     };
 
     const handleCreate = async () => {
-        if (!formData.name || !formData.hostname || !formData.ip_address) {
-            setError('Name, hostname, and IP address are required.');
+        if (!formData.name || !formData.hostname) {
+            setError('Name and hostname are required.');
             return;
         }
-        if (!isValidIP(formData.ip_address)) {
+        if (formData.connect_type === 'ssh' && !formData.ip_address) {
+            setError('IP address is required for SSH connections.');
+            return;
+        }
+        if (formData.connect_type === 'cloudflare' && !formData.cf_hostname) {
+            setError('CF Hostname is required for Cloudflare connections.');
+            return;
+        }
+        if (formData.connect_type === 'ssh' && formData.ip_address && !isValidIP(formData.ip_address)) {
             setError('Please enter a valid IPv4 or IPv6 address');
             return;
         }
@@ -289,13 +310,17 @@ export default function Servers() {
             ssh_key: server.ssh_key || '',
             ssh_password: '',
             modules: [],
+            connect_type: (server.connect_type || 'ssh') as 'ssh' | 'cloudflare',
+            cf_hostname: server.cf_hostname || '',
+            cf_client_id: '',
+            cf_client_secret: '',
         });
         setEditError('');
     };
 
     const handleUpdate = async () => {
         if (!editServer) return;
-        if (editData.ip_address && !isValidIP(editData.ip_address)) {
+        if (editData.connect_type === 'ssh' && editData.ip_address && !isValidIP(editData.ip_address)) {
             setEditError('Please enter a valid IPv4 or IPv6 address');
             return;
         }
@@ -475,7 +500,11 @@ export default function Servers() {
                                         </div>
                                         <div>
                                             <h3 className="text-sm font-semibold text-white">{server.name}</h3>
-                                            <p className="text-xs text-surface-200/40">{server.ip_address}:{server.port}</p>
+                                            <p className="text-xs text-surface-200/40">
+                                                {server.connect_type === 'cloudflare'
+                                                    ? `🌐 ${server.cf_hostname || server.hostname}`
+                                                    : `${server.ip_address}:${server.port}`}
+                                            </p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -588,22 +617,70 @@ export default function Servers() {
                                             placeholder="server.example.com" />
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">IP Address</label>
-                                        <input value={formData.ip_address} onChange={e => { setFormData({ ...formData, ip_address: e.target.value }); setTestResult(null); }}
-                                            className={`w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 placeholder:text-surface-200/20 ${formData.ip_address && !isValidIP(formData.ip_address) ? 'focus:ring-red-500/30 border-red-500/30' : 'focus:ring-nova-500/30'}`}
-                                            placeholder="0.0.0.0" />
-                                        {formData.ip_address && !isValidIP(formData.ip_address) && (
-                                            <p className="text-[10px] text-red-400 mt-1">Invalid IP address format</p>
-                                        )}
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">SSH Port</label>
-                                        <input type="number" value={formData.port} onChange={e => setFormData({ ...formData, port: parseInt(e.target.value) || 22 })}
-                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30" />
+
+                                {/* Connection Type Toggle */}
+                                <div>
+                                    <label className="block text-sm font-medium text-surface-200 mb-1.5">Connection Type</label>
+                                    <div className="flex gap-2">
+                                        {([
+                                            { id: 'ssh', label: '🔐 Direct SSH' },
+                                            { id: 'cloudflare', label: '🌐 Cloudflare Access' },
+                                        ] as const).map(ct => (
+                                            <button key={ct.id} type="button"
+                                                onClick={() => setFormData(prev => ({ ...prev, connect_type: ct.id }))}
+                                                className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${formData.connect_type === ct.id ? 'bg-nova-500/20 text-nova-400 border border-nova-500/30' : 'bg-white/5 text-surface-200/50 border border-white/10 hover:bg-white/10'}`}>
+                                                {ct.label}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
+
+                                {formData.connect_type === 'ssh' ? (
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-surface-200 mb-1.5">IP Address</label>
+                                            <input value={formData.ip_address} onChange={e => { setFormData({ ...formData, ip_address: e.target.value }); setTestResult(null); }}
+                                                className={`w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 placeholder:text-surface-200/20 ${formData.ip_address && !isValidIP(formData.ip_address) ? 'focus:ring-red-500/30 border-red-500/30' : 'focus:ring-nova-500/30'}`}
+                                                placeholder="0.0.0.0" />
+                                            {formData.ip_address && !isValidIP(formData.ip_address) && (
+                                                <p className="text-[10px] text-red-400 mt-1">Invalid IP address format</p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-surface-200 mb-1.5">SSH Port</label>
+                                            <input type="number" value={formData.port} onChange={e => setFormData({ ...formData, port: parseInt(e.target.value) || 22 })}
+                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30" />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3 p-3 rounded-xl border border-orange-500/20 bg-orange-500/5">
+                                        <div className="flex items-start gap-2 text-xs text-orange-300/80 mb-1">
+                                            <span>⚠️</span>
+                                            <span>Cloudflare Access SSH requires <code>cloudflared</code> on the panel host and a Service Token with <strong>SSH</strong> access to your tunnel.</span>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-surface-200 mb-1.5">CF Tunnel Hostname</label>
+                                            <input value={formData.cf_hostname} onChange={e => setFormData({ ...formData, cf_hostname: e.target.value })}
+                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                placeholder="ssh.example.com" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-sm font-medium text-surface-200 mb-1.5">Client ID</label>
+                                                <input value={formData.cf_client_id} onChange={e => setFormData({ ...formData, cf_client_id: e.target.value })}
+                                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                    placeholder="xxxx.access" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-surface-200 mb-1.5">Client Secret</label>
+                                                <input type="password" value={formData.cf_client_secret} onChange={e => setFormData({ ...formData, cf_client_secret: e.target.value })}
+                                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                    placeholder="••••••••" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-surface-200 mb-1.5">Operating System</label>
@@ -624,10 +701,10 @@ export default function Servers() {
 
                                 {/* Test Connection Button */}
                                 <div className="pt-2">
-                                    <button onClick={handleTestConnection} disabled={testing || !formData.ip_address}
+                                    <button onClick={handleTestConnection} disabled={testing || (formData.connect_type === 'ssh' ? !formData.ip_address : !formData.cf_hostname)}
                                         className="w-full py-2.5 rounded-xl border border-nova-500/30 text-nova-400 text-sm font-medium hover:bg-nova-500/10 transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
                                         {testing ? <Loader className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
-                                        {testing ? 'Testing...' : 'Test SSH Connection'}
+                                        {testing ? 'Testing...' : `Test ${formData.connect_type === 'cloudflare' ? 'Cloudflare' : 'SSH'} Connection`}
                                     </button>
                                     {testResult && (
                                         <div className={`mt-3 p-3 rounded-xl border text-xs font-mono whitespace-pre-wrap max-h-32 overflow-y-auto custom-scrollbar ${testResult.success ? 'border-green-500/30 bg-green-500/10 text-green-300' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
@@ -717,21 +794,65 @@ export default function Servers() {
                                         className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30" />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-surface-200 mb-1.5">IP Address</label>
-                                    <input value={editData.ip_address} onChange={e => setEditData({ ...editData, ip_address: e.target.value })}
-                                        className={`w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 ${editData.ip_address && !isValidIP(editData.ip_address) ? 'focus:ring-red-500/30' : 'focus:ring-nova-500/30'}`} />
-                                    {editData.ip_address && !isValidIP(editData.ip_address) && (
-                                        <p className="text-[10px] text-red-400 mt-1">Invalid IP address format</p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-surface-200 mb-1.5">SSH Port</label>
-                                    <input type="number" value={editData.port} onChange={e => setEditData({ ...editData, port: parseInt(e.target.value) || 22 })}
-                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30" />
+
+                            {/* Connection Type */}
+                            <div>
+                                <label className="block text-sm font-medium text-surface-200 mb-1.5">Connection Type</label>
+                                <div className="flex gap-2">
+                                    {([
+                                        { id: 'ssh', label: '🔐 Direct SSH' },
+                                        { id: 'cloudflare', label: '🌐 Cloudflare Access' },
+                                    ] as const).map(ct => (
+                                        <button key={ct.id} type="button"
+                                            onClick={() => setEditData(prev => ({ ...prev, connect_type: ct.id }))}
+                                            className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${editData.connect_type === ct.id ? 'bg-nova-500/20 text-nova-400 border border-nova-500/30' : 'bg-white/5 text-surface-200/50 border border-white/10 hover:bg-white/10'}`}>
+                                            {ct.label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
+
+                            {editData.connect_type === 'ssh' ? (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">IP Address</label>
+                                        <input value={editData.ip_address} onChange={e => setEditData({ ...editData, ip_address: e.target.value })}
+                                            className={`w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 ${editData.ip_address && !isValidIP(editData.ip_address) ? 'focus:ring-red-500/30' : 'focus:ring-nova-500/30'}`} />
+                                        {editData.ip_address && !isValidIP(editData.ip_address) && (
+                                            <p className="text-[10px] text-red-400 mt-1">Invalid IP address format</p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">SSH Port</label>
+                                        <input type="number" value={editData.port} onChange={e => setEditData({ ...editData, port: parseInt(e.target.value) || 22 })}
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30" />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-3 p-3 rounded-xl border border-orange-500/20 bg-orange-500/5">
+                                    <div>
+                                        <label className="block text-sm font-medium text-surface-200 mb-1.5">CF Tunnel Hostname</label>
+                                        <input value={editData.cf_hostname} onChange={e => setEditData({ ...editData, cf_hostname: e.target.value })}
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                            placeholder="ssh.example.com" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-sm font-medium text-surface-200 mb-1.5">Client ID</label>
+                                            <input value={editData.cf_client_id} onChange={e => setEditData({ ...editData, cf_client_id: e.target.value })}
+                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                placeholder="leave blank to keep" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-surface-200 mb-1.5">Client Secret</label>
+                                            <input type="password" value={editData.cf_client_secret} onChange={e => setEditData({ ...editData, cf_client_secret: e.target.value })}
+                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                placeholder="leave blank to keep" />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-surface-200 mb-1.5">Operating System</label>

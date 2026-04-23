@@ -42,11 +42,13 @@ type Server struct {
 	Status        string     `json:"status" db:"status"`
 	AgentVersion  *string    `json:"agent_version,omitempty" db:"agent_version"`
 	AgentStatus   string     `json:"agent_status" db:"agent_status"`
-	SSHUser       string     `json:"ssh_user" db:"ssh_user"`
-	SSHKey        string     `json:"ssh_key,omitempty" db:"ssh_key"`
-	SSHPassword   string     `json:"ssh_password,omitempty" db:"ssh_password"`
-	AuthMethod    string     `json:"auth_method" db:"auth_method"`
-	LastHeartbeat *time.Time `json:"last_heartbeat,omitempty" db:"last_heartbeat"`
+	SSHUser        string     `json:"ssh_user" db:"ssh_user"`
+	SSHKey         string     `json:"ssh_key,omitempty" db:"ssh_key"`
+	SSHPassword    string     `json:"ssh_password,omitempty" db:"ssh_password"`
+	AuthMethod     string     `json:"auth_method" db:"auth_method"`
+	ConnectType    string     `json:"connect_type" db:"connect_type"`
+	CFHostname     string     `json:"cf_hostname,omitempty" db:"cf_hostname"`
+	LastHeartbeat  *time.Time `json:"last_heartbeat,omitempty" db:"last_heartbeat"`
 	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
 }

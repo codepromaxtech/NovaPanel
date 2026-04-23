@@ -40,39 +40,51 @@ type UpdateDomainRequest struct {
 }
 
 type CreateServerRequest struct {
-	Name        string   `json:"name" binding:"required"`
-	Hostname    string   `json:"hostname" binding:"required"`
-	IPAddress   string   `json:"ip_address" binding:"required"`
-	Port        int      `json:"port"`
-	OS          string   `json:"os"`
-	Role        string   `json:"role"`
-	SSHUser     string   `json:"ssh_user"`
-	SSHKey      string   `json:"ssh_key"`
-	SSHPassword string   `json:"ssh_password"`
-	AuthMethod  string   `json:"auth_method"`
-	Modules     []string `json:"modules"` // modules to auto-install
+	Name            string   `json:"name" binding:"required"`
+	Hostname        string   `json:"hostname" binding:"required"`
+	IPAddress       string   `json:"ip_address"`
+	Port            int      `json:"port"`
+	OS              string   `json:"os"`
+	Role            string   `json:"role"`
+	SSHUser         string   `json:"ssh_user"`
+	SSHKey          string   `json:"ssh_key"`
+	SSHPassword     string   `json:"ssh_password"`
+	AuthMethod      string   `json:"auth_method"`
+	ConnectType     string   `json:"connect_type"`     // "ssh" | "cloudflare"
+	CFHostname      string   `json:"cf_hostname"`      // e.g. ssh.gigaza.org
+	CFClientID      string   `json:"cf_client_id"`     // Service Token client ID
+	CFClientSecret  string   `json:"cf_client_secret"` // Service Token client secret
+	Modules         []string `json:"modules"`
 }
 
 type UpdateServerRequest struct {
-	Name        string `json:"name"`
-	Hostname    string `json:"hostname"`
-	IPAddress   string `json:"ip_address"`
-	Port        int    `json:"port"`
-	OS          string `json:"os"`
-	Role        string `json:"role"`
-	SSHUser     string `json:"ssh_user"`
-	SSHKey      string `json:"ssh_key"`
-	SSHPassword string `json:"ssh_password"`
-	AuthMethod  string `json:"auth_method"`
+	Name           string `json:"name"`
+	Hostname       string `json:"hostname"`
+	IPAddress      string `json:"ip_address"`
+	Port           int    `json:"port"`
+	OS             string `json:"os"`
+	Role           string `json:"role"`
+	SSHUser        string `json:"ssh_user"`
+	SSHKey         string `json:"ssh_key"`
+	SSHPassword    string `json:"ssh_password"`
+	AuthMethod     string `json:"auth_method"`
+	ConnectType    string `json:"connect_type"`
+	CFHostname     string `json:"cf_hostname"`
+	CFClientID     string `json:"cf_client_id"`
+	CFClientSecret string `json:"cf_client_secret"`
 }
 
 type TestConnectionRequest struct {
-	IPAddress   string `json:"ip_address" binding:"required"`
-	Port        int    `json:"port"`
-	SSHUser     string `json:"ssh_user"`
-	SSHKey      string `json:"ssh_key"`
-	SSHPassword string `json:"ssh_password"`
-	AuthMethod  string `json:"auth_method"`
+	IPAddress      string `json:"ip_address"`
+	Port           int    `json:"port"`
+	SSHUser        string `json:"ssh_user"`
+	SSHKey         string `json:"ssh_key"`
+	SSHPassword    string `json:"ssh_password"`
+	AuthMethod     string `json:"auth_method"`
+	ConnectType    string `json:"connect_type"`
+	CFHostname     string `json:"cf_hostname"`
+	CFClientID     string `json:"cf_client_id"`
+	CFClientSecret string `json:"cf_client_secret"`
 }
 
 type CreateTaskRequest struct {

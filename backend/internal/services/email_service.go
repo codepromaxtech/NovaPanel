@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	novacrypto "github.com/novapanel/novapanel/internal/crypto"
 	"github.com/novapanel/novapanel/internal/models"
 	"github.com/novapanel/novapanel/internal/provisioner"
 	"golang.org/x/crypto/bcrypt"
@@ -458,32 +457,7 @@ func (s *EmailService) GetCatchAll(ctx context.Context, domainID string) (string
 // ──────────── Webmail ────────────
 
 func (s *EmailService) getServerSSH(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
-	var srv provisioner.ServerInfo
-	var port int
-	var encKey, encPassword string
-	err := s.pool.QueryRow(ctx,
-		`SELECT host(ip_address), port, ssh_user, COALESCE(ssh_key,''), COALESCE(ssh_password,''), COALESCE(auth_method,'password'), COALESCE(is_local, FALSE)
-		 FROM servers WHERE id = $1`, serverID,
-	).Scan(&srv.IPAddress, &port, &srv.SSHUser, &encKey, &encPassword, &srv.AuthMethod, &srv.IsLocal)
-	if err != nil {
-		return srv, err
-	}
-	srv.Port = port
-	if cryptoKey, kerr := novacrypto.GetEncryptionKey(); kerr == nil {
-		if encKey != "" {
-			if dec, derr := novacrypto.Decrypt(encKey, cryptoKey); derr == nil {
-				encKey = dec
-			}
-		}
-		if encPassword != "" {
-			if dec, derr := novacrypto.Decrypt(encPassword, cryptoKey); derr == nil {
-				encPassword = dec
-			}
-		}
-	}
-	srv.SSHKey = encKey
-	srv.SSHPassword = encPassword
-	return srv, nil
+	return GetServerInfo(ctx, s.pool, serverID)
 }
 
 // DeployWebmail deploys Roundcube webmail via Docker on a server

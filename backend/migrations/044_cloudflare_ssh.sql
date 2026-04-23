@@ -1,0 +1,5 @@
+ALTER TABLE servers
+  ADD COLUMN IF NOT EXISTS connect_type    VARCHAR(20) DEFAULT 'ssh',
+  ADD COLUMN IF NOT EXISTS cf_hostname     VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS cf_client_id    TEXT,
+  ADD COLUMN IF NOT EXISTS cf_client_secret TEXT;
