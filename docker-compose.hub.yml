@@ -121,12 +121,16 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      SSH_USER: ${SSH_USER:-root}
+      SSH_PASSWORD: ${SSH_PASSWORD:-}
+      HOST_USER: ${HOST_USER:-root}
     volumes:
       - /etc/nginx:/host/nginx:ro
       - /etc/apache2:/host/apache2:ro
       - /etc/systemd/system:/host/systemd/system:ro
       - /lib/systemd/system:/host/systemd/lib:ro
       - /var/run/dbus:/var/run/dbus:ro
+      - /root/.ssh:/host/ssh:ro
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     depends_on:

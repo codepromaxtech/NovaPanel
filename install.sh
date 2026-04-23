@@ -119,6 +119,7 @@ else
   GEN_REDIS_PASS=$(rand_pass)
   GEN_JWT=$(rand_hex 32)
   GEN_ENC=$(rand_hex 32)$(rand_hex 32)   # 64-char hex
+  CURRENT_USER=$(whoami)
 
   if [ "$MODE" = "2" ]; then
     # ── Manual mode ──────────────────────────────────────────────────────────
@@ -148,6 +149,13 @@ else
     PORT="$PANEL_PORT"
 
     echo ""
+    echo -e "  ${BOLD}Host SSH  ${DIM}(required — enables File Manager, DB Manager, System Services)${RESET}"
+    echo ""
+    SSH_USER_VAL=$(ask "SSH username" "$CURRENT_USER")
+    echo -ne "    ${YELLOW}SSH_PASSWORD${RESET} ${DIM}[leave blank if using SSH key auth]${RESET}: "
+    read -rs SSH_PASS_VAL; echo ""
+
+    echo ""
     echo -e "  ${BOLD}SMTP  ${DIM}(optional — enables password reset emails)${RESET}"
     echo ""
     SMTP_HOST=$(ask "SMTP host" "")
@@ -170,6 +178,8 @@ else
     REDIS_PASS="$GEN_REDIS_PASS"
     JWT="$GEN_JWT"
     ENC="$GEN_ENC"
+    SSH_USER_VAL="$CURRENT_USER"
+    SSH_PASS_VAL=""
     SMTP_HOST=""; SMTP_PORT="587"; SMTP_USER=""; SMTP_PASS=""; SMTP_FROM=""
     STRIPE_KEY=""; STRIPE_WH=""
   fi
@@ -185,6 +195,9 @@ else
   sed -i "s|change_me_64_char_hex_key_here_0000000000000000000000000000000000|${ENC}|g" .env
   sed -i "s|http://your-server-ip:8080|http://${SERVER_IP}:${PORT}|g"    .env
   sed -i "s|^PANEL_PORT=.*|PANEL_PORT=${PORT}|"                          .env
+  sed -i "s|^SSH_USER=.*|SSH_USER=${SSH_USER_VAL}|"                      .env
+  sed -i "s|^HOST_USER=.*|HOST_USER=${SSH_USER_VAL}|"                    .env
+  [ -n "$SSH_PASS_VAL" ] && sed -i "s|^SSH_PASSWORD=.*|SSH_PASSWORD=${SSH_PASS_VAL}|" .env
   [ -n "$SMTP_HOST" ]  && sed -i "s|^SMTP_HOST=.*|SMTP_HOST=${SMTP_HOST}|"         .env
   [ -n "$SMTP_USER" ]  && sed -i "s|^SMTP_USER=.*|SMTP_USER=${SMTP_USER}|"         .env
   [ -n "$SMTP_PASS" ]  && sed -i "s|^SMTP_PASSWORD=.*|SMTP_PASSWORD=${SMTP_PASS}|" .env
@@ -211,6 +224,8 @@ if [ "$MODE" = "2" ] 2>/dev/null; then
   ok "Redis password          set"
   ok "JWT secret              set"
   ok "Encryption key          set"
+  ok "SSH user                ${SSH_USER_VAL:-$CURRENT_USER}"
+  [ -n "${SSH_PASS_VAL:-}" ] && ok "SSH password            set" || ok "SSH auth                key-based (from ~/.ssh)"
   [ -n "${SMTP_HOST:-}" ] && ok "SMTP                    configured" || skipped "SMTP"
   [ -n "${STRIPE_KEY:-}" ] && ok "Stripe billing          configured" || skipped "Stripe billing"
   echo ""

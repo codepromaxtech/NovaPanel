@@ -960,28 +960,48 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 	}
 }
 
-// autoRegisterHostServer adds the host machine as the first "master" server
-// if no servers exist yet. Returns the server ID (existing or new).
+// autoRegisterHostServer adds the host machine as the "master" server with full
+// SSH credentials so it is managed identically to any remote server.
 func autoRegisterHostServer(pool *pgxpool.Pool) {
 	ctx := context.Background()
 
-	// Check if any servers already exist
-	var count int
-	err := pool.QueryRow(ctx, "SELECT count(*) FROM servers").Scan(&count)
-	if err != nil {
-		log.Printf("Warning: could not check server count: %v", err)
-		return
+	// Read SSH credentials from environment (set in docker-compose / .env)
+	sshUser := os.Getenv("SSH_USER")
+	if sshUser == "" {
+		sshUser = os.Getenv("HOST_USER")
+	}
+	if sshUser == "" {
+		sshUser = "root"
+	}
+	sshPassword := os.Getenv("SSH_PASSWORD")
+
+	// Try to read the host SSH private key from the mounted path
+	sshKey := ""
+	for _, keyPath := range []string{"/host/ssh/id_rsa", "/host/ssh/id_ed25519", "/host/ssh/id_ecdsa"} {
+		if data, err := os.ReadFile(keyPath); err == nil {
+			sshKey = string(data)
+			break
+		}
 	}
 
-	var serverID string
+	authMethod := "password"
+	if sshKey != "" {
+		authMethod = "key"
+	}
 
-	if count > 0 {
-		// Get the existing master server ID
-		pool.QueryRow(ctx, "SELECT id FROM servers WHERE role = 'master' LIMIT 1").Scan(&serverID)
-		if serverID != "" {
-			autoDiscoverServices(pool, serverID)
+	// Encrypt credentials for storage
+	encPassword, encKey := "", ""
+	if cryptoKey, err := novacrypto.GetEncryptionKey(); err == nil {
+		if sshPassword != "" {
+			if enc, err := novacrypto.Encrypt(sshPassword, cryptoKey); err == nil {
+				encPassword = enc
+			}
 		}
-		return
+		if sshKey != "" {
+			if enc, err := novacrypto.Encrypt(sshKey, cryptoKey); err == nil {
+				encKey = enc
+			}
+		}
 	}
 
 	// Detect host information
@@ -989,13 +1009,11 @@ func autoRegisterHostServer(pool *pgxpool.Pool) {
 	if hostname == "" {
 		hostname = "novapanel-host"
 	}
-
 	ip := getOutboundIP()
 
 	osInfo := runtime.GOOS
 	if data, err := os.ReadFile("/etc/os-release"); err == nil {
-		lines := strings.Split(string(data), "\n")
-		for _, line := range lines {
+		for _, line := range strings.Split(string(data), "\n") {
 			if strings.HasPrefix(line, "PRETTY_NAME=") {
 				osInfo = strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
 				break
@@ -1003,20 +1021,50 @@ func autoRegisterHostServer(pool *pgxpool.Pool) {
 		}
 	}
 
-	// Insert the host server
-	err = pool.QueryRow(ctx,
-		`INSERT INTO servers (name, hostname, ip_address, port, os, role, status, agent_status)
-		 VALUES ($1, $2, $3, 22, $4, 'master', 'active', 'connected')
+	var serverID string
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM servers WHERE role='master'").Scan(&count); err != nil {
+		log.Printf("Warning: could not check server count: %v", err)
+		return
+	}
+
+	if count > 0 {
+		// Master already exists — backfill SSH credentials if they are empty
+		pool.QueryRow(ctx, "SELECT id FROM servers WHERE role = 'master' LIMIT 1").Scan(&serverID)
+		if serverID != "" {
+			pool.Exec(ctx,
+				`UPDATE servers
+				 SET ssh_user     = CASE WHEN COALESCE(ssh_user,'') = '' OR ssh_user = 'root' THEN $1 ELSE ssh_user END,
+				     ssh_password = CASE WHEN COALESCE(ssh_password,'') = '' THEN $2 ELSE ssh_password END,
+				     ssh_key      = CASE WHEN COALESCE(ssh_key,'') = ''      THEN $3 ELSE ssh_key END,
+				     auth_method  = CASE WHEN COALESCE(auth_method,'') = '' OR auth_method = 'password' THEN $4 ELSE auth_method END,
+				     ip_address   = $5
+				 WHERE id = $6`,
+				sshUser, encPassword, encKey, authMethod, ip, serverID,
+			)
+			log.Printf("✓ Host server SSH credentials refreshed (user=%s, auth=%s)", sshUser, authMethod)
+			autoDiscoverServices(pool, serverID)
+		}
+		return
+	}
+
+	// Insert new master server with full SSH credentials
+	err := pool.QueryRow(ctx,
+		`INSERT INTO servers
+		   (name, hostname, ip_address, port, os, role, status, agent_status,
+		    ssh_user, ssh_password, ssh_key, auth_method)
+		 VALUES ($1, $2, $3, 22, $4, 'master', 'active', 'connected', $5, $6, $7, $8)
 		 RETURNING id`,
 		"NovaPanel Host", hostname, ip, osInfo,
+		sshUser, encPassword, encKey, authMethod,
 	).Scan(&serverID)
 	if err != nil {
 		log.Printf("Warning: failed to auto-register host server: %v", err)
 		return
 	}
-	log.Printf("✓ Auto-registered host server: %s (%s) — %s", hostname, ip, osInfo)
+	log.Printf("✓ Auto-registered host server: %s (%s) — %s (user=%s, auth=%s)",
+		hostname, ip, osInfo, sshUser, authMethod)
 
-	// Discover services on the host
 	autoDiscoverServices(pool, serverID)
 }
 
