@@ -129,8 +129,8 @@ NovaPanel/
 ## Docker Hub
 
 ```
-codepromax24/novapanel:latest     # Go API + compiled React SPA
-codepromax24/automation:latest    # Python certbot/nginx automation
+codepromax24/novapanel-api:latest          # Go API + compiled React SPA
+codepromax24/novapanel-automation:latest   # Python certbot/nginx automation
 ```
 
 Images are built and pushed automatically on every `v*.*.*` git tag via [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml).

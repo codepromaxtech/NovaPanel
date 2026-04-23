@@ -7,8 +7,8 @@ on:
 
 env:
   REGISTRY: docker.io
-  API_IMAGE: codepromax24/novapanel
-  AUTOMATION_IMAGE: codepromax24/automation
+  API_IMAGE: codepromax24/novapanel-api
+  AUTOMATION_IMAGE: codepromax24/novapanel-automation
 
 jobs:
   build-api:

@@ -95,7 +95,7 @@ services:
     cap_drop: [ALL]
 
   api:
-    image: codepromax24/novapanel:latest   # pulled from Docker Hub
+    image: codepromax24/novapanel-api:latest      # pulled from Docker Hub
     container_name: novapanel-api
     restart: unless-stopped
     networks: [db-net, app-net, socket-net]
@@ -144,7 +144,7 @@ services:
       start_period: 20s
 
   automation:
-    image: codepromax24/automation:latest  # pulled from Docker Hub
+    image: codepromax24/novapanel-automation:latest  # pulled from Docker Hub
     container_name: novapanel-automation
     restart: unless-stopped
     networks: [db-net, app-net]
