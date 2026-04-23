@@ -75,7 +75,7 @@ func Load() *Config {
 		StripePriceReseller:   getEnv("STRIPE_PRICE_RESELLER", ""),
 
 		LicenseKey:       getEnv("LICENSE_KEY", ""),
-		LicenseServerURL: getEnv("LICENSE_SERVER_URL", "https://license.codepromax.org"),
+		LicenseServerURL: getEnv("LICENSE_SERVER_URL", "https://license.codepromax.com.de"),
 		LicenseProductID: getEnv("LICENSE_PRODUCT_ID", "novapanel"),
 	}
 }
