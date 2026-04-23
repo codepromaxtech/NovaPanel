@@ -36,6 +36,11 @@ type Config struct {
 	StripeWebhookSecret    string
 	StripePriceEnterprise  string
 	StripePriceReseller    string
+
+	// License
+	LicenseKey        string
+	LicenseServerURL  string
+	LicenseProductID  string
 }
 
 func Load() *Config {
@@ -68,6 +73,10 @@ func Load() *Config {
 		StripeWebhookSecret:   getEnv("STRIPE_WEBHOOK_SECRET", ""),
 		StripePriceEnterprise: getEnv("STRIPE_PRICE_ENTERPRISE", ""),
 		StripePriceReseller:   getEnv("STRIPE_PRICE_RESELLER", ""),
+
+		LicenseKey:       getEnv("LICENSE_KEY", ""),
+		LicenseServerURL: getEnv("LICENSE_SERVER_URL", "https://license.codepromax.org"),
+		LicenseProductID: getEnv("LICENSE_PRODUCT_ID", "novapanel"),
 	}
 }
 

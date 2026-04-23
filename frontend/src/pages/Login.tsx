@@ -1,8 +1,9 @@
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Zap, Mail, Lock, User, ArrowRight, Eye, EyeOff, Shield, Server, Activity, Globe, Check } from 'lucide-react';
 import { authService } from '../services/auth';
 import { useAuthStore } from '../store/authStore';
+import axios from 'axios';
 
 export default function Login() {
     const [isLogin, setIsLogin] = useState(true);
@@ -18,6 +19,24 @@ export default function Login() {
     const [totpCode, setTotpCode] = useState('');
     const navigate = useNavigate();
     const { setAuth } = useAuthStore();
+
+    const [buildInfo, setBuildInfo] = useState<{
+        version: string;
+        plan_type: string;
+        license_valid: boolean;
+        days_left: number;
+    }>({ version: '...', plan_type: 'community', license_valid: false, days_left: -1 });
+
+    useEffect(() => {
+        axios.get('/health').then(r => {
+            setBuildInfo({
+                version: r.data.version || 'unknown',
+                plan_type: r.data.plan_type || 'community',
+                license_valid: r.data.license_valid ?? false,
+                days_left: r.data.days_left ?? -1,
+            });
+        }).catch(() => {});
+    }, []);
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -95,8 +114,14 @@ export default function Login() {
                 {/* Center Content */}
                 <div className="relative z-10 max-w-xl animate-fade-in delay-150 mt-12 mb-auto pb-20">
                     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel border border-nova-500/30 mb-8 backdrop-blur-md">
-                        <span className="w-2 h-2 rounded-full bg-nova-400 animate-pulse-ring" />
-                        <span className="text-xs font-semibold uppercase tracking-wider text-nova-300">NovaPanel v0.3.0 Enterprise</span>
+                        <span className={`w-2 h-2 rounded-full animate-pulse-ring ${buildInfo.license_valid ? 'bg-nova-400' : 'bg-yellow-400'}`} />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-nova-300">
+                            NovaPanel {buildInfo.version}
+                            {' '}
+                            {buildInfo.plan_type === 'community' ? 'Community' :
+                             buildInfo.plan_type === 'trial' ? `Trial${buildInfo.days_left > 0 ? ` · ${buildInfo.days_left}d left` : ''}` :
+                             buildInfo.plan_type === 'reseller' ? 'Reseller' : 'Enterprise'}
+                        </span>
                     </div>
 
                     <h2 className="text-6xl font-extrabold tracking-tight mb-6 leading-[1.15] text-white">
@@ -130,7 +155,7 @@ export default function Login() {
 
                 {/* Bottom stats/social proof */}
                 <div className="relative z-10 flex items-center justify-between pt-8 border-t border-white/10 mt-auto animate-fade-in delay-300">
-                    <p className="text-sm text-surface-200/50">© 2026 NovaPanel Technologies</p>
+                    <p className="text-sm text-surface-200/50">© {new Date().getFullYear()} NovaPanel · {buildInfo.version}</p>
                     <div className="flex flex-col items-end">
                         <div className="flex -space-x-3 mb-2">
                             <img className="w-8 h-8 rounded-full border-2 border-surface-950" src="https://i.pravatar.cc/100?img=1" alt="User" />

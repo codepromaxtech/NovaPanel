@@ -373,6 +373,10 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 	}
 	updateHandler := handlers.NewUpdateHandler(updateSvc)
 
+	// License service — verifies license key against CodeProMax license server
+	licenseSvc := services.NewLicenseService(pool, cfg)
+	licenseSvc.RunBackgroundChecker(context.Background())
+
 	// Set up Gin router
 	if cfg.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -388,9 +392,18 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 		r.Use(middleware.IPWhitelist(middleware.ParseCIDRList(cfg.IPWhitelist)))
 	}
 
-	// Health check
+	// Health check — also exposes version and license plan for the login page
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok", "service": "novapanel-api", "version": version.AppVersion})
+		lic := licenseSvc.GetStatus()
+		c.JSON(200, gin.H{
+			"status":     "ok",
+			"service":    "novapanel-api",
+			"version":    version.AppVersion,
+			"plan_type":  lic.PlanType,
+			"license_valid": lic.Valid,
+			"expires_at": lic.ExpiresAt,
+			"days_left":  lic.DaysLeft,
+		})
 	})
 
 	// API v1 routes
