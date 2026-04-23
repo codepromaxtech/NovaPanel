@@ -175,7 +175,7 @@ services:
       - app-net      # outbound internet (Cloudflare, SSH to managed servers, etc.)
       - socket-net   # reach docker-proxy (not the raw socket)
     ports:
-      - "8080:8080"  # only public-facing port
+      - "0.0.0.0:8080:8080"  # only public-facing port
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
