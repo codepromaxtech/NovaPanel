@@ -5,6 +5,7 @@ interface AuthState {
     user: User | null;
     token: string | null;
     isAuthenticated: boolean;
+    initialized: boolean;
     setAuth: (user: User, token: string) => void;
     clearAuth: () => void;
     loadFromStorage: () => void;
@@ -14,6 +15,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     user: null,
     token: null,
     isAuthenticated: false,
+    initialized: false,
 
     setAuth: (user, token) => {
         localStorage.setItem('novapanel_token', token);
@@ -33,10 +35,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         if (token && userStr) {
             try {
                 const user = JSON.parse(userStr) as User;
-                set({ user, token, isAuthenticated: true });
-            } catch {
-                set({ user: null, token: null, isAuthenticated: false });
-            }
+                set({ user, token, isAuthenticated: true, initialized: true });
+                return;
+            } catch { /* fall through */ }
         }
+        set({ initialized: true });
     },
 }));

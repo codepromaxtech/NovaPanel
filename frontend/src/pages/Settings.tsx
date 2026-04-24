@@ -6,12 +6,14 @@ import { authService } from '../services/auth';
 import { updateService } from '../services/system';
 import { useToast } from '../components/ui/ToastProvider';
 import { useModalLock } from '../hooks/useModalLock';
+import { useAuthStore } from '../store/authStore';
 
 const inputCls = 'w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20';
 const btnPrimary = 'flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-nova-600 to-nova-700 text-white text-sm font-medium hover:shadow-lg hover:shadow-nova-500/25 transition-all disabled:opacity-50';
 
 export default function Settings() {
     const toast = useToast();
+    const { user } = useAuthStore();
     const [searchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
     const [profile, setProfile] = useState({ name: '', email: '' });
@@ -250,7 +252,7 @@ export default function Settings() {
     const loadLicenseStatus = async () => {
         setLicenseLoading(true);
         try {
-            const res = await fetch('/api/v1/settings/license', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+            const res = await fetch('/api/v1/settings/license', { headers: { Authorization: `Bearer ${localStorage.getItem('novapanel_token')}` } });
             if (res.ok) setLicenseStatus(await res.json());
         } catch { /* not critical */ }
         finally { setLicenseLoading(false); }
@@ -262,7 +264,7 @@ export default function Settings() {
         try {
             const res = await fetch('/api/v1/settings/license/activate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('novapanel_token')}` },
                 body: JSON.stringify({ license_key: licenseKey.trim() }),
             });
             const data = await res.json();
@@ -282,7 +284,7 @@ export default function Settings() {
         try {
             const res = await fetch('/api/v1/settings/license/refresh', {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                headers: { Authorization: `Bearer ${localStorage.getItem('novapanel_token')}` },
             });
             if (res.ok) { setLicenseStatus(await res.json()); toast.success('License refreshed'); }
         } catch { toast.error('Failed to refresh'); }
@@ -326,7 +328,7 @@ export default function Settings() {
         } catch (e: any) { toast.error(e?.response?.data?.error || 'Failed to start update'); }
     };
 
-    const isAdmin = userRole === 'admin';
+    const isAdmin = userRole === 'admin' || user?.role === 'admin';
     const tabs = [
         { id: 'profile', label: 'Profile', icon: User },
         { id: 'security', label: 'Password', icon: Lock },

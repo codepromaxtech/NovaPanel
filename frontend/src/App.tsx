@@ -31,10 +31,9 @@ import Reseller from './pages/Reseller';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore();
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  const { isAuthenticated, initialized } = useAuthStore();
+  if (!initialized) return null; // wait for localStorage to be read
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 

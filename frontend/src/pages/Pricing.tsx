@@ -166,7 +166,7 @@ function CheckoutModal({ plan, cycle, onClose }: { plan: typeof plans[0]; cycle:
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
             <div className="glass-card rounded-2xl p-8 w-full max-w-md mx-4 animate-fade-in" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-6">
                     <div>
