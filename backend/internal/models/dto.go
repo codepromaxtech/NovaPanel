@@ -113,12 +113,15 @@ type SuccessResponse struct {
 }
 
 type DashboardStats struct {
-	TotalServers  int64 `json:"total_servers"`
-	ActiveServers int64 `json:"active_servers"`
-	TotalDomains  int64 `json:"total_domains"`
-	TotalUsers    int64 `json:"total_users"`
-	TotalApps     int64 `json:"total_apps"`
-	PendingTasks  int64 `json:"pending_tasks"`
+	TotalServers  int64   `json:"total_servers"`
+	ActiveServers int64   `json:"active_servers"`
+	TotalDomains  int64   `json:"total_domains"`
+	TotalUsers    int64   `json:"total_users"`
+	TotalApps     int64   `json:"total_apps"`
+	PendingTasks  int64   `json:"pending_tasks"`
+	CPUUsage      float64 `json:"cpu_usage"`
+	MemoryUsage   float64 `json:"memory_usage"`
+	DiskUsage     float64 `json:"disk_usage"`
 }
 
 // Phase 2 DTOs

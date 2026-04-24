@@ -18,6 +18,7 @@ export default function Dashboard() {
     const [stats, setStats] = useState<DashboardStats>({
         total_servers: 0, active_servers: 0, total_domains: 0,
         total_users: 0, total_apps: 0, pending_tasks: 0,
+        cpu_usage: 0, memory_usage: 0, disk_usage: 0,
     });
     const [activity, setActivity] = useState<AuditEvent[]>([]);
 
@@ -27,6 +28,7 @@ export default function Dashboard() {
             .catch(() => setStats({
                 total_servers: 0, active_servers: 0, total_domains: 0,
                 total_users: 0, total_apps: 0, pending_tasks: 0,
+                cpu_usage: 0, memory_usage: 0, disk_usage: 0,
             }));
 
         api.get('/audit-logs', { params: { per_page: 8 } })
@@ -150,9 +152,9 @@ export default function Dashboard() {
                         <h3 className="text-sm font-semibold text-surface-200/60 mb-3">Server Health</h3>
                         <div className="space-y-2">
                             {[
-                                { label: 'CPU Usage', value: 42, gradient: 'from-success to-emerald-400' },
-                                { label: 'Memory', value: 67, gradient: 'from-warning to-amber-400' },
-                                { label: 'Disk', value: 28, gradient: 'from-info to-blue-400' },
+                                { label: 'CPU Usage', value: Math.round(stats.cpu_usage), gradient: 'from-success to-emerald-400' },
+                                { label: 'Memory', value: Math.round(stats.memory_usage), gradient: 'from-warning to-amber-400' },
+                                { label: 'Disk', value: Math.round(stats.disk_usage), gradient: 'from-info to-blue-400' },
                             ].map(m => (
                                 <div key={m.label}>
                                     <div className="flex items-center justify-between text-sm">

@@ -395,7 +395,7 @@ func (s *AuthService) ListSessions(ctx context.Context, userID string) ([]models
 	}
 	defer rows.Close()
 
-	var sessions []models.UserSession
+	sessions := []models.UserSession{}
 	for rows.Next() {
 		var sess models.UserSession
 		var ip, ua *string

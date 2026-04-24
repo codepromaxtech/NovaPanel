@@ -215,6 +215,25 @@ func (s *ServerService) GetDashboardStats(ctx context.Context) (*models.Dashboar
 	s.db.QueryRow(ctx, "SELECT COUNT(*) FROM applications").Scan(&stats.TotalApps)
 	s.db.QueryRow(ctx, "SELECT COUNT(*) FROM tasks WHERE status IN ('queued', 'running')").Scan(&stats.PendingTasks)
 
+	// Get aggregated server health from latest metrics
+	err := s.db.QueryRow(ctx, `
+		WITH LatestMetrics AS (
+			SELECT server_id,
+			       cpu_percent,
+			       CASE WHEN ram_total_mb > 0 THEN (ram_used_mb * 100.0 / ram_total_mb) ELSE 0 END as mem_pct,
+			       CASE WHEN disk_total_gb > 0 THEN (disk_used_gb * 100.0 / disk_total_gb) ELSE 0 END as disk_pct,
+			       ROW_NUMBER() OVER(PARTITION BY server_id ORDER BY recorded_at DESC) as rn
+			FROM server_metrics
+		)
+		SELECT COALESCE(AVG(cpu_percent), 0),
+		       COALESCE(AVG(mem_pct), 0),
+		       COALESCE(AVG(disk_pct), 0)
+		FROM LatestMetrics WHERE rn = 1
+	`).Scan(&stats.CPUUsage, &stats.MemoryUsage, &stats.DiskUsage)
+	if err != nil {
+		log.Printf("failed to get aggregated server health: %v", err)
+	}
+
 	return stats, nil
 }
 

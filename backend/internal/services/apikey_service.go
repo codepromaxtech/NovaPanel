@@ -83,7 +83,7 @@ func (s *APIKeyService) List(ctx context.Context, userID uuid.UUID) ([]models.AP
 	}
 	defer rows.Close()
 
-	var keys []models.APIKey
+	keys := []models.APIKey{}
 	for rows.Next() {
 		var k models.APIKey
 		if err := rows.Scan(&k.ID, &k.UserID, &k.Name, &k.KeyPrefix, &k.LastUsedAt,

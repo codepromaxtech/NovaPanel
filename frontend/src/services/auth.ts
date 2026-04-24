@@ -70,7 +70,7 @@ export const authService = {
     // ── Sessions ──
     async listSessions() {
         const { data } = await api.get('/auth/sessions');
-        return data as Array<{ id: string; ip_address: string; user_agent: string; last_seen_at: string; created_at: string }>;
+        return (data?.data || []) as Array<{ id: string; ip_address: string; user_agent: string; last_seen_at: string; created_at: string }>;
     },
     async revokeSession(id: string) {
         await api.delete(`/auth/sessions/${id}`);

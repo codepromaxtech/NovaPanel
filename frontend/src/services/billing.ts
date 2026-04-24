@@ -44,7 +44,7 @@ export const settingsService = {
     // ── API Keys ──
     async listApiKeys() {
         const { data } = await api.get('/settings/api-keys');
-        return data as Array<{ id: string; name: string; key_prefix: string; scopes: string[]; last_used_at: string | null; expires_at: string | null; created_at: string }>;
+        return (data?.data || []) as Array<{ id: string; name: string; key_prefix: string; scopes: string[]; last_used_at: string | null; expires_at: string | null; created_at: string }>;
     },
     async createApiKey(name: string, scopes: string[], expiresAt?: string) {
         const { data } = await api.post('/settings/api-keys', { name, scopes, expires_at: expiresAt });

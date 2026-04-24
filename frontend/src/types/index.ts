@@ -59,6 +59,9 @@ export interface DashboardStats {
     total_users: number;
     total_apps: number;
     pending_tasks: number;
+    cpu_usage: number;
+    memory_usage: number;
+    disk_usage: number;
 }
 
 export interface PaginatedResponse<T> {
