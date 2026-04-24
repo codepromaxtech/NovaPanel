@@ -24,6 +24,7 @@ import CronJobs from './pages/CronJobs';
 import Services from './pages/Services';
 import Cloudflare from './pages/Cloudflare';
 import TeamManagement from './pages/TeamManagement';
+import Pricing from './pages/Pricing';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -46,6 +47,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/pricing" element={<Pricing />} />
 
           <Route
             element={

@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Zap, Mail, Lock, User, ArrowRight, Eye, EyeOff, Shield, Server, Activity, Globe, Check } from 'lucide-react';
 import { authService } from '../services/auth';
 import { useAuthStore } from '../store/authStore';
@@ -360,7 +360,7 @@ export default function Login() {
                         </button>
                     </form>}
 
-                    {mode === 'auth' && <div className="mt-8 pt-8 border-t border-white/10 text-center">
+                    {mode === 'auth' && <div className="mt-8 pt-8 border-t border-white/10 text-center space-y-3">
                         <p className="text-sm text-surface-200/60">
                             {isLogin ? "New to NovaPanel?" : "Already managing servers?"}{' '}
                             <button
@@ -369,6 +369,11 @@ export default function Login() {
                             >
                                 {isLogin ? 'Create an account' : 'Sign in here'}
                             </button>
+                        </p>
+                        <p className="text-sm text-surface-200/40">
+                            <Link to="/pricing" className="text-nova-400/80 hover:text-nova-300 transition-colors">
+                                View plans &amp; pricing →
+                            </Link>
                         </p>
                     </div>}
                 </div>
