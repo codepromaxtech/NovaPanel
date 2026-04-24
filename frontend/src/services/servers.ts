@@ -15,7 +15,7 @@ export const serverService = {
     async create(payload: {
         name: string;
         hostname: string;
-        ip_address: string;
+        ip_address?: string;
         port?: number;
         os?: string;
         role?: string;
@@ -24,6 +24,10 @@ export const serverService = {
         ssh_password?: string;
         auth_method?: string;
         modules?: string[];
+        connect_type?: string;
+        cf_hostname?: string;
+        cf_client_id?: string;
+        cf_client_secret?: string;
     }): Promise<Server> {
         const { data } = await api.post('/servers', payload);
         return data;

@@ -72,6 +72,13 @@ func (h *CloudflareHandler) Verify(c *gin.Context) {
 	})
 }
 
+// POST /cloudflare/accounts
+func (h *CloudflareHandler) ListAccounts(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.ListAccounts(c.Request.Context(), auth.APIKey, auth.Email)
+	})
+}
+
 // POST /cloudflare/zones
 func (h *CloudflareHandler) ListZones(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
@@ -142,6 +149,13 @@ func (h *CloudflareHandler) GetSSL(c *gin.Context) {
 	})
 }
 
+// POST /cloudflare/ssl/verification
+func (h *CloudflareHandler) GetSSLVerification(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.GetSSLVerification(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "zone_id"))
+	})
+}
+
 // POST /cloudflare/ssl/set
 func (h *CloudflareHandler) SetSSL(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
@@ -193,6 +207,27 @@ func (h *CloudflareHandler) SetSecurity(c *gin.Context) {
 func (h *CloudflareHandler) ListFirewall(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
 		return h.svc.ListFirewallRules(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "zone_id"))
+	})
+}
+
+// POST /cloudflare/firewall/create
+func (h *CloudflareHandler) CreateFirewall(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		rulesRaw, _ := body["rules"].([]interface{})
+		rules := make([]map[string]interface{}, 0, len(rulesRaw))
+		for _, r := range rulesRaw {
+			if rr, ok := r.(map[string]interface{}); ok {
+				rules = append(rules, rr)
+			}
+		}
+		return h.svc.CreateFirewallRule(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "zone_id"), rules)
+	})
+}
+
+// POST /cloudflare/firewall/delete
+func (h *CloudflareHandler) DeleteFirewall(c *gin.Context) {
+	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
+		return h.svc.DeleteFirewallRule(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "zone_id"), getString(body, "rule_id"))
 	})
 }
 
@@ -256,35 +291,35 @@ func (h *CloudflareHandler) UpdateSetting(c *gin.Context) {
 // POST /cloudflare/tunnels/list
 func (h *CloudflareHandler) ListTunnels(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
-		return h.svc.ListTunnels(c.Request.Context(), auth.APIKey, auth.Email)
+		return h.svc.ListTunnels(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "account_id"))
 	})
 }
 
 // POST /cloudflare/tunnels/create
 func (h *CloudflareHandler) CreateTunnel(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
-		return h.svc.CreateTunnel(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "name"), getString(body, "tunnel_secret"))
+		return h.svc.CreateTunnel(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "account_id"), getString(body, "name"), getString(body, "tunnel_secret"))
 	})
 }
 
 // POST /cloudflare/tunnels/delete
 func (h *CloudflareHandler) DeleteTunnel(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
-		return h.svc.DeleteTunnel(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+		return h.svc.DeleteTunnel(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "account_id"), getString(body, "tunnel_id"))
 	})
 }
 
 // POST /cloudflare/tunnels/get
 func (h *CloudflareHandler) GetTunnel(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
-		return h.svc.GetTunnel(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+		return h.svc.GetTunnel(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "account_id"), getString(body, "tunnel_id"))
 	})
 }
 
 // POST /cloudflare/tunnels/config
 func (h *CloudflareHandler) GetTunnelConfig(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
-		return h.svc.GetTunnelConfig(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+		return h.svc.GetTunnelConfig(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "account_id"), getString(body, "tunnel_id"))
 	})
 }
 
@@ -292,21 +327,21 @@ func (h *CloudflareHandler) GetTunnelConfig(c *gin.Context) {
 func (h *CloudflareHandler) UpdateTunnelConfig(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
 		config, _ := body["config"].(map[string]interface{})
-		return h.svc.UpdateTunnelConfig(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"), config)
+		return h.svc.UpdateTunnelConfig(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "account_id"), getString(body, "tunnel_id"), config)
 	})
 }
 
 // POST /cloudflare/tunnels/token
 func (h *CloudflareHandler) GetTunnelToken(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
-		return h.svc.GetTunnelToken(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+		return h.svc.GetTunnelToken(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "account_id"), getString(body, "tunnel_id"))
 	})
 }
 
 // POST /cloudflare/tunnels/connections
 func (h *CloudflareHandler) ListTunnelConnections(c *gin.Context) {
 	h.proxy(c, func(auth cfAuth, body map[string]interface{}) (map[string]interface{}, error) {
-		return h.svc.ListTunnelConnections(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "tunnel_id"))
+		return h.svc.ListTunnelConnections(c.Request.Context(), auth.APIKey, auth.Email, getString(body, "account_id"), getString(body, "tunnel_id"))
 	})
 }
 

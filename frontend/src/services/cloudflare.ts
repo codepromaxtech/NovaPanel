@@ -13,6 +13,10 @@ export const cloudflareService = {
         const { data } = await api.post('/cloudflare/verify', withAuth(auth));
         return data;
     },
+    async listAccounts(auth: CFAuth) {
+        const { data } = await api.post('/cloudflare/accounts', withAuth(auth));
+        return data;
+    },
 
     // Zones
     async listZones(auth: CFAuth, page = 1) {
@@ -51,6 +55,10 @@ export const cloudflareService = {
         const { data } = await api.post('/cloudflare/ssl/set', withAuth(auth, { zone_id: zoneId, mode }));
         return data;
     },
+    async getSSLVerification(auth: CFAuth, zoneId: string) {
+        const { data } = await api.post('/cloudflare/ssl/verification', withAuth(auth, { zone_id: zoneId }));
+        return data;
+    },
 
     // Cache
     async purgeAll(auth: CFAuth, zoneId: string) {
@@ -79,6 +87,14 @@ export const cloudflareService = {
         const { data } = await api.post('/cloudflare/firewall/list', withAuth(auth, { zone_id: zoneId }));
         return data;
     },
+    async createFirewall(auth: CFAuth, zoneId: string, rules: Record<string, unknown>[]) {
+        const { data } = await api.post('/cloudflare/firewall/create', withAuth(auth, { zone_id: zoneId, rules }));
+        return data;
+    },
+    async deleteFirewall(auth: CFAuth, zoneId: string, ruleId: string) {
+        const { data } = await api.post('/cloudflare/firewall/delete', withAuth(auth, { zone_id: zoneId, rule_id: ruleId }));
+        return data;
+    },
 
     // Analytics
     async analytics(auth: CFAuth, zoneId: string, since = -1440) {
@@ -96,37 +112,37 @@ export const cloudflareService = {
         return data;
     },
 
-    // Tunnels
-    async listTunnels(auth: CFAuth) {
-        const { data } = await api.post('/cloudflare/tunnels/list', withAuth(auth));
+    // Tunnels — all accept optional accountId for multi-account Global API Key support
+    async listTunnels(auth: CFAuth, accountId?: string) {
+        const { data } = await api.post('/cloudflare/tunnels/list', withAuth(auth, { account_id: accountId }));
         return data;
     },
-    async createTunnel(auth: CFAuth, name: string, tunnelSecret: string) {
-        const { data } = await api.post('/cloudflare/tunnels/create', withAuth(auth, { name, tunnel_secret: tunnelSecret }));
+    async createTunnel(auth: CFAuth, name: string, tunnelSecret: string, accountId?: string) {
+        const { data } = await api.post('/cloudflare/tunnels/create', withAuth(auth, { name, tunnel_secret: tunnelSecret, account_id: accountId }));
         return data;
     },
-    async deleteTunnel(auth: CFAuth, tunnelId: string) {
-        const { data } = await api.post('/cloudflare/tunnels/delete', withAuth(auth, { tunnel_id: tunnelId }));
+    async deleteTunnel(auth: CFAuth, tunnelId: string, accountId?: string) {
+        const { data } = await api.post('/cloudflare/tunnels/delete', withAuth(auth, { tunnel_id: tunnelId, account_id: accountId }));
         return data;
     },
-    async getTunnel(auth: CFAuth, tunnelId: string) {
-        const { data } = await api.post('/cloudflare/tunnels/get', withAuth(auth, { tunnel_id: tunnelId }));
+    async getTunnel(auth: CFAuth, tunnelId: string, accountId?: string) {
+        const { data } = await api.post('/cloudflare/tunnels/get', withAuth(auth, { tunnel_id: tunnelId, account_id: accountId }));
         return data;
     },
-    async getTunnelConfig(auth: CFAuth, tunnelId: string) {
-        const { data } = await api.post('/cloudflare/tunnels/config', withAuth(auth, { tunnel_id: tunnelId }));
+    async getTunnelConfig(auth: CFAuth, tunnelId: string, accountId?: string) {
+        const { data } = await api.post('/cloudflare/tunnels/config', withAuth(auth, { tunnel_id: tunnelId, account_id: accountId }));
         return data;
     },
-    async updateTunnelConfig(auth: CFAuth, tunnelId: string, config: Record<string, unknown>) {
-        const { data } = await api.post('/cloudflare/tunnels/config/update', withAuth(auth, { tunnel_id: tunnelId, config }));
+    async updateTunnelConfig(auth: CFAuth, tunnelId: string, config: Record<string, unknown>, accountId?: string) {
+        const { data } = await api.post('/cloudflare/tunnels/config/update', withAuth(auth, { tunnel_id: tunnelId, config, account_id: accountId }));
         return data;
     },
-    async getTunnelToken(auth: CFAuth, tunnelId: string) {
-        const { data } = await api.post('/cloudflare/tunnels/token', withAuth(auth, { tunnel_id: tunnelId }));
+    async getTunnelToken(auth: CFAuth, tunnelId: string, accountId?: string) {
+        const { data } = await api.post('/cloudflare/tunnels/token', withAuth(auth, { tunnel_id: tunnelId, account_id: accountId }));
         return data;
     },
-    async listTunnelConnections(auth: CFAuth, tunnelId: string) {
-        const { data } = await api.post('/cloudflare/tunnels/connections', withAuth(auth, { tunnel_id: tunnelId }));
+    async listTunnelConnections(auth: CFAuth, tunnelId: string, accountId?: string) {
+        const { data } = await api.post('/cloudflare/tunnels/connections', withAuth(auth, { tunnel_id: tunnelId, account_id: accountId }));
         return data;
     },
     async createTunnelDNSRoute(auth: CFAuth, zoneId: string, hostname: string, tunnelId: string) {

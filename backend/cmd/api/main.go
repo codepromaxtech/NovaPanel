@@ -397,13 +397,13 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 	r.GET("/health", func(c *gin.Context) {
 		lic := licenseSvc.GetStatus()
 		c.JSON(200, gin.H{
-			"status":     "ok",
-			"service":    "novapanel-api",
-			"version":    version.AppVersion,
-			"plan_type":  lic.PlanType,
+			"status":        "ok",
+			"service":       "novapanel-api",
+			"version":       version.AppVersion,
+			"plan_type":     lic.PlanType,
 			"license_valid": lic.Valid,
-			"expires_at": lic.ExpiresAt,
-			"days_left":  lic.DaysLeft,
+			"expires_at":    lic.ExpiresAt,
+			"days_left":     lic.DaysLeft,
 		})
 	})
 
@@ -551,6 +551,7 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 			cf := protected.Group("/cloudflare")
 			{
 				cf.POST("/verify", cfHandler.Verify)
+				cf.POST("/accounts", cfHandler.ListAccounts)
 				cf.POST("/zones", cfHandler.ListZones)
 				cf.POST("/zones/get", cfHandler.GetZone)
 				cf.POST("/dns/list", cfHandler.ListDNS)
@@ -559,12 +560,15 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 				cf.POST("/dns/delete", cfHandler.DeleteDNS)
 				cf.POST("/ssl/get", cfHandler.GetSSL)
 				cf.POST("/ssl/set", cfHandler.SetSSL)
+				cf.POST("/ssl/verification", cfHandler.GetSSLVerification)
 				cf.POST("/cache/purge-all", cfHandler.PurgeAll)
 				cf.POST("/cache/purge-urls", cfHandler.PurgeURLs)
 				cf.POST("/cache/ttl", cfHandler.SetCacheTTL)
 				cf.POST("/devmode", cfHandler.SetDevMode)
 				cf.POST("/security", cfHandler.SetSecurity)
 				cf.POST("/firewall/list", cfHandler.ListFirewall)
+				cf.POST("/firewall/create", cfHandler.CreateFirewall)
+				cf.POST("/firewall/delete", cfHandler.DeleteFirewall)
 				cf.POST("/analytics", cfHandler.Analytics)
 				cf.POST("/settings/get", cfHandler.GetSettings)
 				cf.POST("/settings/update", cfHandler.UpdateSetting)
@@ -947,8 +951,6 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 					c.GET("/crds", k8sHandler.ListCRDs)
 				}
 			}
-
-
 
 			// Team Management
 			team := protected.Group("/team")

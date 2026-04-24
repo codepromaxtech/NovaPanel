@@ -62,6 +62,18 @@ func (s *CloudflareService) cfRequest(ctx context.Context, method, path string, 
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	// Surface Cloudflare-level errors
+	if success, ok := result["success"].(bool); ok && !success {
+		if errs, ok := result["errors"].([]interface{}); ok && len(errs) > 0 {
+			if errObj, ok := errs[0].(map[string]interface{}); ok {
+				msg, _ := errObj["message"].(string)
+				if msg != "" {
+					return result, fmt.Errorf("cloudflare: %s", msg)
+				}
+			}
+		}
+	}
+
 	return result, nil
 }
 
@@ -240,8 +252,49 @@ func (s *CloudflareService) SetRocketLoader(ctx context.Context, apiKey, email, 
 
 // ──── Cloudflare Tunnels ────
 
-func (s *CloudflareService) getAccountID(ctx context.Context, apiKey, email string) (string, error) {
-	r, err := s.cfRequest(ctx, "GET", "/accounts?page=1&per_page=5", apiKey, email, nil)
+// ListAccounts returns all CF accounts the credential has access to
+func (s *CloudflareService) ListAccounts(ctx context.Context, apiKey, email string) (map[string]interface{}, error) {
+	// Paginate through all accounts (most users have 1-2, but some have many)
+	allAccounts := []interface{}{}
+	for page := 1; page <= 20; page++ {
+		r, err := s.cfRequest(ctx, "GET", fmt.Sprintf("/accounts?page=%d&per_page=50", page), apiKey, email, nil)
+		if err != nil {
+			if page == 1 {
+				return nil, err
+			}
+			break
+		}
+		results, _ := r["result"].([]interface{})
+		if len(results) == 0 {
+			break
+		}
+		allAccounts = append(allAccounts, results...)
+		// Check if there are more pages
+		resInfo, _ := r["result_info"].(map[string]interface{})
+		totalPages := 1
+		if resInfo != nil {
+			if tp, ok := resInfo["total_pages"].(float64); ok {
+				totalPages = int(tp)
+			}
+		}
+		if page >= totalPages {
+			break
+		}
+	}
+	return map[string]interface{}{
+		"success": true,
+		"result":  allAccounts,
+	}, nil
+}
+
+// getAccountID resolves the account ID to use for tunnel/account-level operations.
+// If preferredAccountID is provided and non-empty, it is used directly.
+// Otherwise falls back to the first account found.
+func (s *CloudflareService) getAccountID(ctx context.Context, apiKey, email, preferredAccountID string) (string, error) {
+	if preferredAccountID != "" {
+		return preferredAccountID, nil
+	}
+	r, err := s.ListAccounts(ctx, apiKey, email)
 	if err != nil {
 		return "", err
 	}
@@ -252,7 +305,7 @@ func (s *CloudflareService) getAccountID(ctx context.Context, apiKey, email stri
 			}
 		}
 	}
-	return "", fmt.Errorf("no account found")
+	return "", fmt.Errorf("no Cloudflare account found for these credentials")
 }
 
 func (s *CloudflareService) getServer(ctx context.Context, serverID string) (provisioner.ServerInfo, error) {
@@ -260,8 +313,8 @@ func (s *CloudflareService) getServer(ctx context.Context, serverID string) (pro
 }
 
 // ListTunnels lists all CF tunnels in the account
-func (s *CloudflareService) ListTunnels(ctx context.Context, apiKey, email string) (map[string]interface{}, error) {
-	accID, err := s.getAccountID(ctx, apiKey, email)
+func (s *CloudflareService) ListTunnels(ctx context.Context, apiKey, email, accountID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -269,8 +322,8 @@ func (s *CloudflareService) ListTunnels(ctx context.Context, apiKey, email strin
 }
 
 // CreateTunnel creates a new Cloudflare Tunnel
-func (s *CloudflareService) CreateTunnel(ctx context.Context, apiKey, email, name, tunnelSecret string) (map[string]interface{}, error) {
-	accID, err := s.getAccountID(ctx, apiKey, email)
+func (s *CloudflareService) CreateTunnel(ctx context.Context, apiKey, email, accountID, name, tunnelSecret string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -282,8 +335,8 @@ func (s *CloudflareService) CreateTunnel(ctx context.Context, apiKey, email, nam
 }
 
 // DeleteTunnel deletes a tunnel
-func (s *CloudflareService) DeleteTunnel(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
-	accID, err := s.getAccountID(ctx, apiKey, email)
+func (s *CloudflareService) DeleteTunnel(ctx context.Context, apiKey, email, accountID, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -291,8 +344,8 @@ func (s *CloudflareService) DeleteTunnel(ctx context.Context, apiKey, email, tun
 }
 
 // GetTunnel gets tunnel details
-func (s *CloudflareService) GetTunnel(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
-	accID, err := s.getAccountID(ctx, apiKey, email)
+func (s *CloudflareService) GetTunnel(ctx context.Context, apiKey, email, accountID, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -300,8 +353,8 @@ func (s *CloudflareService) GetTunnel(ctx context.Context, apiKey, email, tunnel
 }
 
 // GetTunnelToken gets the token for running cloudflared with this tunnel
-func (s *CloudflareService) GetTunnelToken(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
-	accID, err := s.getAccountID(ctx, apiKey, email)
+func (s *CloudflareService) GetTunnelToken(ctx context.Context, apiKey, email, accountID, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -309,8 +362,8 @@ func (s *CloudflareService) GetTunnelToken(ctx context.Context, apiKey, email, t
 }
 
 // ListTunnelConnections lists active connections for a tunnel
-func (s *CloudflareService) ListTunnelConnections(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
-	accID, err := s.getAccountID(ctx, apiKey, email)
+func (s *CloudflareService) ListTunnelConnections(ctx context.Context, apiKey, email, accountID, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -318,8 +371,8 @@ func (s *CloudflareService) ListTunnelConnections(ctx context.Context, apiKey, e
 }
 
 // UpdateTunnelConfig updates ingress rules for a tunnel
-func (s *CloudflareService) UpdateTunnelConfig(ctx context.Context, apiKey, email, tunnelID string, config map[string]interface{}) (map[string]interface{}, error) {
-	accID, err := s.getAccountID(ctx, apiKey, email)
+func (s *CloudflareService) UpdateTunnelConfig(ctx context.Context, apiKey, email, accountID, tunnelID string, config map[string]interface{}) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -327,8 +380,8 @@ func (s *CloudflareService) UpdateTunnelConfig(ctx context.Context, apiKey, emai
 }
 
 // GetTunnelConfig gets the current config for a tunnel
-func (s *CloudflareService) GetTunnelConfig(ctx context.Context, apiKey, email, tunnelID string) (map[string]interface{}, error) {
-	accID, err := s.getAccountID(ctx, apiKey, email)
+func (s *CloudflareService) GetTunnelConfig(ctx context.Context, apiKey, email, accountID, tunnelID string) (map[string]interface{}, error) {
+	accID, err := s.getAccountID(ctx, apiKey, email, accountID)
 	if err != nil {
 		return nil, err
 	}

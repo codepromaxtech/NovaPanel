@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Cloud, Globe, Shield, Lock, Trash2, Plus, RefreshCw, Loader, X, Zap, Eye, BarChart3, Settings2, Network, Play, Square, Download } from 'lucide-react';
+import { Cloud, Globe, Shield, Lock, Trash2, Plus, RefreshCw, Loader, X, Zap, Eye, BarChart3, Settings2, Network, Play, Square, Download, Server, Edit2, Check } from 'lucide-react';
 import { cloudflareService } from '../services/cloudflare';
 import { serverService } from '../services/servers';
 import { useToast } from '../components/ui/ToastProvider';
+import { useModalLock } from '../hooks/useModalLock';
 
 type Tab = 'zones' | 'dns' | 'ssl' | 'cache' | 'security' | 'analytics' | 'settings' | 'tunnels';
 interface CFAuth { api_key: string; email?: string; }
@@ -35,6 +36,8 @@ export default function Cloudflare() {
     const [dnsRecords, setDnsRecords] = useState<any[]>([]);
     const [showAddDNS, setShowAddDNS] = useState(false);
     const [dnsForm, setDnsForm] = useState({ type: 'A', name: '', content: '', ttl: 1, proxied: true });
+    const [editingDNS, setEditingDNS] = useState<any>(null);
+    useModalLock(showAddDNS || !!editingDNS);
 
     // SSL
     const [sslMode, setSSLMode] = useState('');
@@ -51,6 +54,10 @@ export default function Cloudflare() {
     // Cache purge
     const [purgeUrls, setPurgeUrls] = useState('');
 
+    // Accounts (for multi-account Global API Key)
+    const [accounts, setAccounts] = useState<any[]>([]);
+    const [selectedAccount, setSelectedAccount] = useState(() => localStorage.getItem('cf_account_id') || '');
+
     // Tunnels
     const [tunnels, setTunnels] = useState<any[]>([]);
     const [showCreateTunnel, setShowCreateTunnel] = useState(false);
@@ -59,6 +66,10 @@ export default function Cloudflare() {
     const [servers, setServers] = useState<any[]>([]);
     const [deployServer, setDeployServer] = useState('');
     const [tunnelOutput, setTunnelOutput] = useState('');
+    const [showAddServer, setShowAddServer] = useState<any>(null);
+    const [addServerForm, setAddServerForm] = useState({ name: '', hostname: '', ssh_user: 'root', ssh_password: '', ssh_key: '', auth_method: 'password', cf_hostname: '' });
+    const [addingServer, setAddingServer] = useState(false);
+    useModalLock(showCreateTunnel || !!showAddServer);
 
     const handleConnect = async () => {
         if (!apiKey) { toast.error('API key required'); return; }
@@ -71,22 +82,41 @@ export default function Cloudflare() {
                 if (email) localStorage.setItem('cf_email', email);
                 toast.success('Connected to Cloudflare!');
                 fetchZones();
+                fetchAccounts();
             } else { toast.error('Invalid credentials'); }
         } catch { toast.error('Connection failed'); }
         setLoading(false);
     };
-    const handleDisconnect = () => { setConnected(false); setZones([]); setSelectedZone(''); localStorage.removeItem('cf_api_key'); localStorage.removeItem('cf_email'); };
+    const handleDisconnect = () => {
+        setConnected(false); setZones([]); setSelectedZone(''); setAccounts([]); setSelectedAccount('');
+        localStorage.removeItem('cf_api_key'); localStorage.removeItem('cf_email'); localStorage.removeItem('cf_account_id');
+    };
+
+    const fetchAccounts = async () => {
+        try {
+            const r = await cloudflareService.listAccounts(auth);
+            const accs = r.result || [];
+            setAccounts(accs);
+            // Auto-select if only one account
+            if (accs.length === 1 && !selectedAccount) {
+                setSelectedAccount(accs[0].id);
+                localStorage.setItem('cf_account_id', accs[0].id);
+            }
+        } catch { }
+    };
 
     const fetchZones = async () => { setLoading(true); try { const r = await cloudflareService.listZones(auth); setZones(r.result || []); } catch { } setLoading(false); };
     const fetchDNS = async () => { if (!selectedZone) return; setLoading(true); try { const r = await cloudflareService.listDNS(auth, selectedZone); setDnsRecords(r.result || []); } catch { } setLoading(false); };
     const fetchSSL = async () => { if (!selectedZone) return; try { const r = await cloudflareService.getSSL(auth, selectedZone); setSSLMode(r.result?.value || ''); } catch { } };
     const fetchAnalytics = async () => { if (!selectedZone) return; setLoading(true); try { const r = await cloudflareService.analytics(auth, selectedZone); setAnalyticsData(r.result || null); } catch { } setLoading(false); };
     const fetchSettings = async () => { if (!selectedZone) return; setLoading(true); try { const r = await cloudflareService.getSettings(auth, selectedZone); setSettings(r); } catch { } setLoading(false); };
-    const fetchTunnels = async () => { setLoading(true); try { const r = await cloudflareService.listTunnels(auth); setTunnels(r.result || []); } catch { } setLoading(false); };
+    const fetchTunnels = async () => { setLoading(true); try { const r = await cloudflareService.listTunnels(auth, selectedAccount); setTunnels(r.result || []); } catch { } setLoading(false); };
 
     useEffect(() => { if (apiKey && localStorage.getItem('cf_api_key')) handleConnect(); }, []);
     useEffect(() => { if (connected && selectedZone) { fetchDNS(); fetchSSL(); } }, [selectedZone]);
     useEffect(() => { serverService.list(1, 100).then(r => setServers(r.data || [])).catch(() => { }); }, []);
+    // Re-fetch tunnels when selected account changes
+    useEffect(() => { if (connected && selectedAccount) { localStorage.setItem('cf_account_id', selectedAccount); fetchTunnels(); } }, [selectedAccount]);
 
     const selectZone = (z: any) => { setSelectedZone(z.id); setSelectedZoneName(z.name); setTab('dns'); };
 
@@ -94,6 +124,10 @@ export default function Cloudflare() {
     const handleAddDNS = async () => {
         if (!dnsForm.name || !dnsForm.content) { toast.error('Fill all fields'); return; }
         try { await cloudflareService.createDNS(auth, selectedZone, dnsForm); toast.success('Record created'); setShowAddDNS(false); fetchDNS(); } catch { toast.error('Failed'); }
+    };
+    const handleEditDNS = async () => {
+        if (!editingDNS || !dnsForm.name || !dnsForm.content) { toast.error('Fill all fields'); return; }
+        try { await cloudflareService.updateDNS(auth, selectedZone, editingDNS.id, dnsForm); toast.success('Record updated'); setEditingDNS(null); fetchDNS(); } catch { toast.error('Failed'); }
     };
     const handleDeleteDNS = async (id: string) => { if (!confirm('Delete?')) return; try { await cloudflareService.deleteDNS(auth, selectedZone, id); toast.success('Deleted'); fetchDNS(); } catch { toast.error('Failed'); } };
 
@@ -107,14 +141,14 @@ export default function Cloudflare() {
     const handleCreateTunnel = async () => {
         if (!tunnelForm.name) { toast.error('Name required'); return; }
         const secret = tunnelForm.secret || btoa(crypto.getRandomValues(new Uint8Array(32)).reduce((a, b) => a + String.fromCharCode(b), ''));
-        try { await cloudflareService.createTunnel(auth, tunnelForm.name, secret); toast.success('Tunnel created'); setShowCreateTunnel(false); setTunnelForm({ name: '', secret: '' }); fetchTunnels(); } catch { toast.error('Failed'); }
+        try { await cloudflareService.createTunnel(auth, tunnelForm.name, secret, selectedAccount); toast.success('Tunnel created'); setShowCreateTunnel(false); setTunnelForm({ name: '', secret: '' }); fetchTunnels(); } catch { toast.error('Failed'); }
     };
-    const handleDeleteTunnel = async (id: string) => { if (!confirm('Delete this tunnel?')) return; try { await cloudflareService.deleteTunnel(auth, id); toast.success('Deleted'); fetchTunnels(); } catch { toast.error('Failed'); } };
+    const handleDeleteTunnel = async (id: string) => { if (!confirm('Delete this tunnel?')) return; try { await cloudflareService.deleteTunnel(auth, id, selectedAccount); toast.success('Deleted'); fetchTunnels(); } catch { toast.error('Failed'); } };
     const handleDeployTunnel = async (tunnel: any) => {
         if (!deployServer) { toast.error('Select server'); return; }
         setTunnelOutput('Getting token and deploying...\n');
         try {
-            const tokenR = await cloudflareService.getTunnelToken(auth, tunnel.id);
+            const tokenR = await cloudflareService.getTunnelToken(auth, tunnel.id, selectedAccount);
             const token = tokenR.result;
             if (!token) { toast.error('Failed to get tunnel token'); return; }
             const r = await cloudflareService.runTunnel(deployServer, token, tunnel.name);
@@ -130,6 +164,46 @@ export default function Cloudflare() {
         if (!deployServer) { toast.error('Select server'); return; }
         setTunnelOutput('Installing cloudflared...\n');
         try { const r = await cloudflareService.installCloudflared(deployServer); setTunnelOutput(r.output || 'Installed'); toast.success('cloudflared installed'); } catch { toast.error('Failed'); }
+    };
+
+    // Add server from tunnel — one-click import
+    const openAddServer = (tunnel: any) => {
+        const cfHost = tunnel.name + '.cfargotunnel.com';
+        setAddServerForm({
+            name: 'CF: ' + tunnel.name,
+            hostname: tunnel.name,
+            ssh_user: 'root',
+            ssh_password: '',
+            ssh_key: '',
+            auth_method: 'password',
+            cf_hostname: cfHost,
+        });
+        setShowAddServer(tunnel);
+    };
+
+    const handleAddServerFromTunnel = async () => {
+        if (!addServerForm.name || !addServerForm.cf_hostname) { toast.error('Fill required fields'); return; }
+        setAddingServer(true);
+        try {
+            await serverService.create({
+                name: addServerForm.name,
+                hostname: addServerForm.hostname || addServerForm.name,
+                ip_address: '0.0.0.0',
+                port: 22,
+                ssh_user: addServerForm.ssh_user,
+                ssh_password: addServerForm.ssh_password || undefined,
+                ssh_key: addServerForm.ssh_key || undefined,
+                auth_method: addServerForm.auth_method,
+                connect_type: 'cloudflare',
+                cf_hostname: addServerForm.cf_hostname,
+            });
+            toast.success('Server added via Cloudflare Tunnel!');
+            setShowAddServer(null);
+            serverService.list(1, 100).then(r => setServers(r.data || [])).catch(() => { });
+        } catch (e: any) {
+            toast.error(e?.response?.data?.error || 'Failed to add server');
+        }
+        setAddingServer(false);
     };
 
     const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-orange-500/50 text-sm";
@@ -167,6 +241,14 @@ export default function Cloudflare() {
                     </h1>
                 </div>
                 <div className="flex items-center gap-2">
+                    {/* Account selector for multi-account */}
+                    {accounts.length > 1 && (
+                        <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)}
+                            className="px-3 py-1.5 rounded-lg bg-surface-800 border border-surface-700/50 text-xs text-surface-200/70 focus:outline-none focus:border-orange-500/50">
+                            <option value="">Auto (first account)</option>
+                            {accounts.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                    )}
                     <span className="px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">Connected</span>
                     <button onClick={handleDisconnect} className="text-xs text-surface-200/40 hover:text-red-400">Disconnect</button>
                 </div>
@@ -203,7 +285,7 @@ export default function Cloudflare() {
             {/* ════ DNS ════ */}
             {tab === 'dns' && selectedZone && !loading && (
                 <div className="space-y-3">
-                    <div className="flex justify-end"><button onClick={() => setShowAddDNS(true)} className={btnPrimary + " flex items-center gap-2 text-xs !px-4 !py-2"}><Plus className="w-3.5 h-3.5" /> Add Record</button></div>
+                    <div className="flex justify-end"><button onClick={() => { setDnsForm({ type: 'A', name: '', content: '', ttl: 1, proxied: true }); setShowAddDNS(true); }} className={btnPrimary + " flex items-center gap-2 text-xs !px-4 !py-2"}><Plus className="w-3.5 h-3.5" /> Add Record</button></div>
                     <div className="space-y-1">{dnsRecords.map(r => (
                         <div key={r.id} className="group flex items-center justify-between bg-surface-800/50 border border-surface-700/50 rounded-lg px-4 py-2.5 hover:border-surface-700">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -213,7 +295,11 @@ export default function Cloudflare() {
                                 {r.proxied && <Cloud className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
                                 <span className="text-surface-200/40 text-xs">{r.ttl === 1 ? 'Auto' : `${r.ttl}s`}</span>
                             </div>
-                            <button onClick={() => handleDeleteDNS(r.id)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/50 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                                <button onClick={() => { setDnsForm({ type: r.type, name: r.name, content: r.content, ttl: r.ttl, proxied: r.proxied }); setEditingDNS(r); }}
+                                    className="p-1.5 rounded hover:bg-orange-500/20 text-surface-200/50 hover:text-orange-400"><Edit2 className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => handleDeleteDNS(r.id)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/50 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
                         </div>
                     ))}{dnsRecords.length === 0 && <p className="text-center text-surface-200/50 py-8">No DNS records</p>}</div>
                 </div>
@@ -293,11 +379,11 @@ export default function Cloudflare() {
                 </div>
             )}
 
-            {/* ════ ADD DNS MODAL ════ */}
-            {showAddDNS && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddDNS(false)}>
+            {/* ════ ADD / EDIT DNS MODAL ════ */}
+            {(showAddDNS || editingDNS) && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { setShowAddDNS(false); setEditingDNS(null); }}>
                     <div className="bg-surface-800 border border-surface-700/50 rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-lg font-bold text-white mb-4">Add DNS Record</h2>
+                        <h2 className="text-lg font-bold text-white mb-4">{editingDNS ? 'Edit DNS Record' : 'Add DNS Record'}</h2>
                         <div className="space-y-3">
                             <select value={dnsForm.type} onChange={e => setDnsForm({ ...dnsForm, type: e.target.value })} className={inputCls + " bg-transparent"}>
                                 {['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'CAA'].map(t => <option key={t} value={t}>{t}</option>)}
@@ -309,8 +395,8 @@ export default function Cloudflare() {
                             </div>
                         </div>
                         <div className="flex justify-end gap-3 mt-4">
-                            <button onClick={() => setShowAddDNS(false)} className="px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 text-sm">Cancel</button>
-                            <button onClick={handleAddDNS} className={btnPrimary}>Add Record</button>
+                            <button onClick={() => { setShowAddDNS(false); setEditingDNS(null); }} className="px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 text-sm">Cancel</button>
+                            <button onClick={editingDNS ? handleEditDNS : handleAddDNS} className={btnPrimary}>{editingDNS ? 'Save Changes' : 'Add Record'}</button>
                         </div>
                     </div>
                 </div>
@@ -342,6 +428,9 @@ export default function Cloudflare() {
                                     <span className={`px-2 py-0.5 text-xs rounded-full ${t.status === 'healthy' || t.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : t.status === 'inactive' ? 'bg-surface-700/50 text-surface-200/40' : 'bg-amber-500/20 text-amber-400'}`}>{t.status || 'created'}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    <button onClick={() => openAddServer(t)} className="px-3 py-1.5 rounded-lg bg-nova-500/20 text-nova-400 text-xs border border-nova-500/30 hover:bg-nova-500/30 flex items-center gap-1" title="Add as NovaPanel server">
+                                        <Server className="w-3 h-3" />Add to Servers
+                                    </button>
                                     <button onClick={() => handleDeployTunnel(t)} disabled={!deployServer} className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs border border-emerald-500/30 hover:bg-emerald-500/30" title="Deploy to server"><Play className="w-3 h-3 inline mr-1" />Deploy</button>
                                     <button onClick={() => handleStopTunnel(t.name)} disabled={!deployServer} className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-xs border border-red-500/30" title="Stop on server"><Square className="w-3 h-3 inline mr-1" />Stop</button>
                                     <button onClick={() => handleDeleteTunnel(t.id)} className="p-1.5 rounded hover:bg-red-500/20 text-surface-200/50 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -366,6 +455,43 @@ export default function Cloudflare() {
                         <div className="flex justify-end gap-3 mt-4">
                             <button onClick={() => setShowCreateTunnel(false)} className="px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 text-sm">Cancel</button>
                             <button onClick={handleCreateTunnel} className={btnPrimary}>Create</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ════ ADD SERVER FROM TUNNEL MODAL ════ */}
+            {showAddServer && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddServer(null)}>
+                    <div className="bg-surface-800 border border-surface-700/50 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-lg font-bold text-white mb-1 flex items-center gap-2"><Server className="w-5 h-5 text-nova-400" /> Add Server via Tunnel</h2>
+                        <p className="text-xs text-surface-200/50 mb-4">Connect to <span className="text-orange-400 font-medium">{showAddServer.name}</span> through Cloudflare Tunnel</p>
+                        <div className="space-y-3">
+                            <div><label className="block text-xs text-surface-200/50 mb-1">Server Name</label>
+                                <input value={addServerForm.name} onChange={e => setAddServerForm({ ...addServerForm, name: e.target.value })} className={inputCls} /></div>
+                            <div><label className="block text-xs text-surface-200/50 mb-1">CF Hostname <span className="text-orange-400">*</span></label>
+                                <input value={addServerForm.cf_hostname} onChange={e => setAddServerForm({ ...addServerForm, cf_hostname: e.target.value })} placeholder="ssh.example.com" className={inputCls} />
+                                <p className="text-[10px] text-surface-200/30 mt-1">The hostname configured in your tunnel's ingress rules for SSH access</p></div>
+                            <div><label className="block text-xs text-surface-200/50 mb-1">SSH User</label>
+                                <input value={addServerForm.ssh_user} onChange={e => setAddServerForm({ ...addServerForm, ssh_user: e.target.value })} className={inputCls} /></div>
+                            <div><label className="block text-xs text-surface-200/50 mb-1">Auth Method</label>
+                                <select value={addServerForm.auth_method} onChange={e => setAddServerForm({ ...addServerForm, auth_method: e.target.value })} className={inputCls + " bg-transparent"}>
+                                    <option value="password">Password</option>
+                                    <option value="key">SSH Key</option>
+                                </select></div>
+                            {addServerForm.auth_method === 'password' ? (
+                                <div><label className="block text-xs text-surface-200/50 mb-1">SSH Password</label>
+                                    <input type="password" value={addServerForm.ssh_password} onChange={e => setAddServerForm({ ...addServerForm, ssh_password: e.target.value })} className={inputCls} /></div>
+                            ) : (
+                                <div><label className="block text-xs text-surface-200/50 mb-1">SSH Private Key</label>
+                                    <textarea value={addServerForm.ssh_key} onChange={e => setAddServerForm({ ...addServerForm, ssh_key: e.target.value })} rows={3} className={inputCls + " font-mono text-xs"} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" /></div>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-3 mt-5">
+                            <button onClick={() => setShowAddServer(null)} className="px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 text-sm">Cancel</button>
+                            <button onClick={handleAddServerFromTunnel} disabled={addingServer} className={btnPrimary + " flex items-center gap-2"}>
+                                {addingServer ? <Loader className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Add Server
+                            </button>
                         </div>
                     </div>
                 </div>
