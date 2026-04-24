@@ -91,3 +91,37 @@ func (h *AppHandler) Delete(c *gin.Context) {
 	writeAudit(c.Request.Context(), h.pool, userID, "delete", "application", appID, c.ClientIP(), nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Application deleted"})
 }
+
+// GET /api/v1/apps/:id/env — returns plaintext env vars (admin only)
+func (h *AppHandler) GetEnv(c *gin.Context) {
+	role := c.MustGet("user_role").(string)
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin only"})
+		return
+	}
+	app, err := h.service.GetByIDWithPlainEnv(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Application not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"env_vars": app.EnvVars})
+}
+
+// PUT /api/v1/apps/:id/env — overwrites env vars (encrypted on save)
+func (h *AppHandler) UpdateEnv(c *gin.Context) {
+	var req struct {
+		EnvVars map[string]string `json:"env_vars" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
+	_, err := h.service.Update(c.Request.Context(), c.Param("id"), models.UpdateAppRequest{EnvVars: req.EnvVars}, userID, role)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Environment variables updated and encrypted"})
+}

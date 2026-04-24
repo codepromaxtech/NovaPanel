@@ -56,3 +56,43 @@ func (h *FTPHandler) Delete(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "FTP account deleted"})
 }
+
+// GET /api/v1/servers/:id/ftp/:ftpID/keys
+func (h *FTPHandler) ListKeys(c *gin.Context) {
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
+	keys, err := h.service.ListSFTPKeys(c.Request.Context(), c.Param("ftpID"), c.Param("id"), userID, role)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": keys})
+}
+
+// POST /api/v1/servers/:id/ftp/:ftpID/keys
+func (h *FTPHandler) AddKey(c *gin.Context) {
+	var req services.AddSFTPKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
+	key, err := h.service.AddSFTPKey(c.Request.Context(), c.Param("ftpID"), c.Param("id"), userID, role, req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, key)
+}
+
+// DELETE /api/v1/servers/:id/ftp/:ftpID/keys/:keyID
+func (h *FTPHandler) DeleteKey(c *gin.Context) {
+	userID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(string)
+	if err := h.service.DeleteSFTPKey(c.Request.Context(), c.Param("keyID"), c.Param("ftpID"), c.Param("id"), userID, role); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "SSH key removed"})
+}

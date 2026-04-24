@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
     LayoutDashboard, Globe, Server, Database, Mail,
     FolderOpen, Shield, Archive, Activity, Rocket,
-    Settings, ChevronLeft, ChevronRight, Zap, CreditCard, Box, Layers, ShieldCheck, ArrowRightLeft, Clock, Cog, Cloud, Users, HardDrive, Bell,
+    Settings, ChevronLeft, ChevronRight, Zap, CreditCard, Box, Layers, ShieldCheck, ArrowRightLeft, Clock, Cog, Cloud, Users, HardDrive, Bell, Store,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -31,6 +31,7 @@ const navItems = [
     { to: '/cloudflare', icon: Cloud, label: 'Cloudflare' },
     { to: '/ftp', icon: HardDrive, label: 'FTP / SFTP' },
     { to: '/alerts', icon: Bell, label: 'Alerts' },
+    { to: '/reseller', icon: Store, label: 'Reseller' },
     { to: '/team', icon: Users, label: 'Team' },
     { to: '/settings', icon: Settings, label: 'Settings' },
 ];

@@ -73,20 +73,21 @@ type Domain struct {
 }
 
 type Application struct {
-	ID           uuid.UUID  `json:"id" db:"id"`
-	UserID       uuid.UUID  `json:"user_id" db:"user_id"`
-	DomainID     *uuid.UUID `json:"domain_id,omitempty" db:"domain_id"`
-	ServerID     *uuid.UUID `json:"server_id,omitempty" db:"server_id"`
-	Name         string     `json:"name" db:"name"`
-	AppType      string     `json:"app_type" db:"app_type"`
-	Runtime      string     `json:"runtime" db:"runtime"`
-	DeployMethod string     `json:"deploy_method" db:"deploy_method"`
-	GitRepo      string     `json:"git_repo,omitempty" db:"git_repo"`
-	GitBranch    string     `json:"git_branch" db:"git_branch"`
-	Status        string     `json:"status" db:"status"`
-	WebhookSecret string     `json:"webhook_secret,omitempty" db:"webhook_secret"`
-	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
+	ID           uuid.UUID         `json:"id" db:"id"`
+	UserID       uuid.UUID         `json:"user_id" db:"user_id"`
+	DomainID     *uuid.UUID        `json:"domain_id,omitempty" db:"domain_id"`
+	ServerID     *uuid.UUID        `json:"server_id,omitempty" db:"server_id"`
+	Name         string            `json:"name" db:"name"`
+	AppType      string            `json:"app_type" db:"app_type"`
+	Runtime      string            `json:"runtime" db:"runtime"`
+	DeployMethod string            `json:"deploy_method" db:"deploy_method"`
+	GitRepo      string            `json:"git_repo,omitempty" db:"git_repo"`
+	GitBranch    string            `json:"git_branch" db:"git_branch"`
+	Status        string            `json:"status" db:"status"`
+	WebhookSecret string            `json:"webhook_secret,omitempty" db:"webhook_secret"`
+	EnvVars       map[string]string `json:"env_vars,omitempty"`
+	CreatedAt     time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at" db:"updated_at"`
 }
 
 type Task struct {

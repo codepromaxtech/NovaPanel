@@ -27,6 +27,7 @@ import TeamManagement from './pages/TeamManagement';
 import Pricing from './pages/Pricing';
 import FTP from './pages/FTP';
 import Alerts from './pages/Alerts';
+import Reseller from './pages/Reseller';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -81,6 +82,7 @@ export default function App() {
             <Route path="/team" element={<TeamManagement />} />
             <Route path="/ftp" element={<FTP />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/reseller" element={<Reseller />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import {
     Rocket, GitBranch, CheckCircle, XCircle, Loader, Clock,
     ChevronDown, Plus, X, Play, RotateCcw, ScrollText,
-    Code2, Globe, Server, AlertCircle, Trash2,
+    Code2, Globe, Server, AlertCircle, Trash2, KeyRound, Eye, EyeOff, Lock,
 } from 'lucide-react';
 import { deployService } from '../services/deployments';
 import { appService, Application } from '../services/applications';
 import { serverService } from '../services/servers';
+import api from '../services/api';
 import { useToast } from '../components/ui/ToastProvider';
 
 interface DeployEntry {
@@ -51,6 +52,15 @@ export default function Deployments() {
     const [deployAppId, setDeployAppId] = useState('');
     const [deployBranch, setDeployBranch] = useState('main');
     const [deploying, setDeploying] = useState(false);
+
+    // Env vars modal
+    const [envApp, setEnvApp] = useState<Application | null>(null);
+    const [envVars, setEnvVars] = useState<Record<string, string>>({});
+    const [envRevealed, setEnvRevealed] = useState(false);
+    const [envSaving, setEnvSaving] = useState(false);
+    const [envLoading, setEnvLoading] = useState(false);
+    const [newEnvKey, setNewEnvKey] = useState('');
+    const [newEnvVal, setNewEnvVal] = useState('');
 
     // Live log modal
     const [logDeploy, setLogDeploy] = useState<string | null>(null);
@@ -135,6 +145,52 @@ export default function Deployments() {
         } catch (err: any) {
             toast.error(err?.response?.data?.error || 'Redeploy failed');
         }
+    };
+
+    const openEnvModal = async (app: Application) => {
+        setEnvApp(app);
+        setEnvRevealed(false);
+        setEnvLoading(true);
+        try {
+            // Masked view first — from regular getById
+            const res = await appService.getById(app.id);
+            setEnvVars(res.env_vars || {});
+        } catch { setEnvVars({}); }
+        finally { setEnvLoading(false); }
+    };
+
+    const revealEnv = async () => {
+        if (!envApp) return;
+        setEnvLoading(true);
+        try {
+            const { data } = await api.get(`/apps/${envApp.id}/env`);
+            setEnvVars(data.env_vars || {});
+            setEnvRevealed(true);
+        } catch { toast.error('Cannot reveal — admin only'); }
+        finally { setEnvLoading(false); }
+    };
+
+    const saveEnv = async () => {
+        if (!envApp) return;
+        setEnvSaving(true);
+        try {
+            await api.put(`/apps/${envApp.id}/env`, { env_vars: envVars });
+            toast.success('Environment variables saved (encrypted)');
+            setEnvRevealed(false);
+            openEnvModal(envApp);
+        } catch (err: any) {
+            toast.error(err.response?.data?.error || 'Failed to save env vars');
+        } finally { setEnvSaving(false); }
+    };
+
+    const addEnvRow = () => {
+        if (!newEnvKey.trim()) return;
+        setEnvVars(v => ({ ...v, [newEnvKey.trim()]: newEnvVal }));
+        setNewEnvKey(''); setNewEnvVal('');
+    };
+
+    const removeEnvRow = (k: string) => {
+        setEnvVars(v => { const n = { ...v }; delete n[k]; return n; });
     };
 
     const handleDeleteApp = async (appId: string) => {
@@ -245,6 +301,11 @@ export default function Deployments() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1">
+                                        <button onClick={() => openEnvModal(app)}
+                                            className="p-1.5 rounded-lg hover:bg-surface-600/50 text-surface-200/40 hover:text-surface-200 transition-colors opacity-0 group-hover:opacity-100"
+                                            title="Environment Variables">
+                                            <KeyRound className="w-3.5 h-3.5" />
+                                        </button>
                                         <button onClick={() => { setShowDeploy(true); setDeployAppId(app.id); setDeployBranch(app.git_branch || 'main'); }}
                                             className="p-1.5 rounded-lg hover:bg-nova-500/10 text-surface-200/40 hover:text-nova-400 transition-colors opacity-0 group-hover:opacity-100"
                                             title="Deploy">
@@ -495,6 +556,83 @@ export default function Deployments() {
                         <pre ref={logRef} className="bg-[#0d1117] rounded-xl p-4 text-xs text-green-300 font-mono leading-5 whitespace-pre-wrap max-h-[60vh] overflow-y-auto custom-scrollbar border border-white/5">
                             {logContent || 'Waiting for logs...'}
                         </pre>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════ Env Vars Modal ═══════ */}
+            {envApp && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="glass-card rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto animate-fade-in">
+                        <div className="flex items-center justify-between mb-5">
+                            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                <KeyRound className="w-5 h-5 text-nova-400" /> Env Vars — {envApp.name}
+                                <span title="Encrypted at rest"><Lock className="w-3.5 h-3.5 text-nova-400/60" /></span>
+                            </h3>
+                            <button onClick={() => setEnvApp(null)} className="text-surface-200/40 hover:text-white"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        {envLoading ? (
+                            <div className="flex items-center justify-center py-8"><Loader className="w-5 h-5 text-nova-400 animate-spin" /></div>
+                        ) : (
+                            <>
+                                {/* Key-value list */}
+                                <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+                                    {Object.keys(envVars).length === 0 ? (
+                                        <p className="text-xs text-surface-400 text-center py-4">No environment variables</p>
+                                    ) : Object.entries(envVars).map(([k, v]) => (
+                                        <div key={k} className="flex items-center gap-2">
+                                            <span className="font-mono text-xs text-nova-300 w-2/5 truncate bg-surface-800/60 px-2.5 py-2 rounded-lg">{k}</span>
+                                            <span className={`font-mono text-xs flex-1 truncate px-2.5 py-2 rounded-lg ${envRevealed ? 'bg-surface-800/60 text-surface-200' : 'bg-surface-800/40 text-surface-500 tracking-widest'}`}>
+                                                {envRevealed ? v : '●●●●●●●●'}
+                                            </span>
+                                            {envRevealed && (
+                                                <button onClick={() => removeEnvRow(k)}
+                                                    className="p-1.5 rounded text-surface-400 hover:text-danger hover:bg-danger/10 transition-colors flex-shrink-0">
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Add new var (only in revealed/edit mode) */}
+                                {envRevealed && (
+                                    <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-surface-800/40 border border-surface-700/40">
+                                        <input value={newEnvKey} onChange={e => setNewEnvKey(e.target.value)}
+                                            placeholder="KEY" className="font-mono text-xs px-2.5 py-2 rounded-lg bg-surface-700/60 border border-surface-600/50 text-nova-300 w-2/5 focus:outline-none focus:border-nova-500/50" />
+                                        <input value={newEnvVal} onChange={e => setNewEnvVal(e.target.value)}
+                                            placeholder="value" className="font-mono text-xs px-2.5 py-2 rounded-lg bg-surface-700/60 border border-surface-600/50 text-surface-200 flex-1 focus:outline-none focus:border-nova-500/50" />
+                                        <button onClick={addEnvRow} disabled={!newEnvKey.trim()}
+                                            className="p-1.5 rounded-lg bg-nova-600 text-white disabled:opacity-50 hover:bg-nova-500 transition-colors flex-shrink-0">
+                                            <Plus className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-2 pt-2 border-t border-surface-700/40">
+                                    {!envRevealed ? (
+                                        <button onClick={revealEnv}
+                                            className="flex-1 py-2 rounded-xl border border-surface-700/50 text-surface-300 text-sm hover:bg-surface-700/30 transition-colors flex items-center justify-center gap-2">
+                                            <Eye className="w-4 h-4" /> Reveal & Edit
+                                        </button>
+                                    ) : (
+                                        <>
+                                            <button onClick={() => { setEnvRevealed(false); openEnvModal(envApp); }}
+                                                className="px-4 py-2 rounded-xl border border-surface-700/50 text-surface-300 text-sm hover:bg-surface-700/30 transition-colors flex items-center gap-2">
+                                                <EyeOff className="w-4 h-4" /> Hide
+                                            </button>
+                                            <button onClick={saveEnv} disabled={envSaving}
+                                                className="flex-1 py-2 rounded-xl bg-gradient-to-r from-nova-600 to-nova-700 text-white text-sm font-medium disabled:opacity-60 flex items-center justify-center gap-2 hover:shadow-lg transition-all">
+                                                {envSaving ? <Loader className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                                                Save Encrypted
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-surface-500 text-center mt-2">Values are AES-encrypted in the database. Reveal requires admin role.</p>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

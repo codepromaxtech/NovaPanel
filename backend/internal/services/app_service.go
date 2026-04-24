@@ -115,15 +115,53 @@ func (s *AppService) List(ctx context.Context, userID uuid.UUID, role string, pa
 
 func (s *AppService) GetByID(ctx context.Context, id string) (*models.Application, error) {
 	app := &models.Application{}
+	var envVarsJSON []byte
+	var envVarsEnc *string
 	err := s.pool.QueryRow(ctx,
 		`SELECT id, user_id, domain_id, server_id, name, app_type, runtime, deploy_method,
-		        COALESCE(git_repo,''), COALESCE(git_branch,'main'), status, created_at, updated_at
+		        COALESCE(git_repo,''), COALESCE(git_branch,'main'), status,
+		        COALESCE(env_vars::text,'{}'), env_vars_enc, created_at, updated_at
 		 FROM applications WHERE id = $1`, id,
 	).Scan(&app.ID, &app.UserID, &app.DomainID, &app.ServerID, &app.Name, &app.AppType,
 		&app.Runtime, &app.DeployMethod, &app.GitRepo, &app.GitBranch, &app.Status,
-		&app.CreatedAt, &app.UpdatedAt)
+		&envVarsJSON, &envVarsEnc, &app.CreatedAt, &app.UpdatedAt)
 	if err != nil {
 		return nil, err
+	}
+	// Decrypt env vars if encrypted, otherwise use plain JSONB; values are masked
+	if envVarsEnc != nil && *envVarsEnc != "" {
+		if plain, err := novacrypto.Decrypt(*envVarsEnc, s.cryptoKey); err == nil {
+			json.Unmarshal([]byte(plain), &app.EnvVars)
+		}
+	} else {
+		json.Unmarshal(envVarsJSON, &app.EnvVars)
+	}
+	// Mask values — keys stay visible, values shown as ***
+	masked := make(map[string]string, len(app.EnvVars))
+	for k := range app.EnvVars {
+		masked[k] = "***"
+	}
+	app.EnvVars = masked
+	return app, nil
+}
+
+// GetByIDWithPlainEnv returns decrypted env vars — for internal deploy use only.
+func (s *AppService) GetByIDWithPlainEnv(ctx context.Context, id string) (*models.Application, error) {
+	app, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var envVarsJSON []byte
+	var envVarsEnc *string
+	s.pool.QueryRow(ctx,
+		`SELECT COALESCE(env_vars::text,'{}'), env_vars_enc FROM applications WHERE id = $1`, id,
+	).Scan(&envVarsJSON, &envVarsEnc)
+	if envVarsEnc != nil && *envVarsEnc != "" {
+		if plain, err := novacrypto.Decrypt(*envVarsEnc, s.cryptoKey); err == nil {
+			json.Unmarshal([]byte(plain), &app.EnvVars)
+		}
+	} else {
+		json.Unmarshal(envVarsJSON, &app.EnvVars)
 	}
 	return app, nil
 }

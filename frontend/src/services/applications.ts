@@ -12,6 +12,7 @@ export interface Application {
     git_repo: string;
     git_branch: string;
     status: string;
+    env_vars?: Record<string, string>;
     created_at: string;
     updated_at: string;
 }

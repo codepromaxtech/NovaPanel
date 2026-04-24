@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -167,4 +168,175 @@ systemctl restart vsftpd 2>/dev/null || true
 echo "FTP_DELETED"
 `, username, username)
 	provisioner.RunScript(srv, script)
+}
+
+// ─── SFTP SSH Key Management ──────────────────────────────────────────────────
+
+type SFTPKey struct {
+	ID           string `json:"id"`
+	FTPAccountID string `json:"ftp_account_id"`
+	Label        string `json:"label"`
+	Fingerprint  string `json:"fingerprint"`
+	CreatedAt    string `json:"created_at"`
+}
+
+type AddSFTPKeyRequest struct {
+	Label     string `json:"label"`
+	PublicKey string `json:"public_key" binding:"required"`
+}
+
+func (s *FTPService) ListSFTPKeys(ctx context.Context, ftpAccountID, serverID string, userID uuid.UUID, role string) ([]SFTPKey, error) {
+	if err := s.checkFTPOwner(ctx, ftpAccountID, serverID, userID, role); err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, ftp_account_id, label, fingerprint, created_at FROM sftp_keys WHERE ftp_account_id = $1 ORDER BY created_at DESC`,
+		ftpAccountID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var keys []SFTPKey
+	for rows.Next() {
+		var k SFTPKey
+		rows.Scan(&k.ID, &k.FTPAccountID, &k.Label, &k.Fingerprint, &k.CreatedAt)
+		keys = append(keys, k)
+	}
+	return keys, nil
+}
+
+func (s *FTPService) AddSFTPKey(ctx context.Context, ftpAccountID, serverID string, userID uuid.UUID, role string, req AddSFTPKeyRequest) (*SFTPKey, error) {
+	if err := s.checkFTPOwner(ctx, ftpAccountID, serverID, userID, role); err != nil {
+		return nil, err
+	}
+
+	// Derive fingerprint via ssh-keygen
+	fingerprint, err := computeSSHFingerprint(req.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("invalid SSH public key: %w", err)
+	}
+
+	label := req.Label
+	if label == "" {
+		label = "key"
+	}
+
+	key := &SFTPKey{}
+	err = s.pool.QueryRow(ctx,
+		`INSERT INTO sftp_keys (ftp_account_id, label, public_key, fingerprint)
+		 VALUES ($1, $2, $3, $4)
+		 RETURNING id, ftp_account_id, label, fingerprint, created_at`,
+		ftpAccountID, label, req.PublicKey, fingerprint,
+	).Scan(&key.ID, &key.FTPAccountID, &key.Label, &key.Fingerprint, &key.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to store key: %w", err)
+	}
+
+	// Provision on server
+	go s.provisionSFTPKey(serverID, ftpAccountID, req.PublicKey)
+	return key, nil
+}
+
+func (s *FTPService) DeleteSFTPKey(ctx context.Context, keyID, ftpAccountID, serverID string, userID uuid.UUID, role string) error {
+	if err := s.checkFTPOwner(ctx, ftpAccountID, serverID, userID, role); err != nil {
+		return err
+	}
+
+	var pubKey string
+	err := s.pool.QueryRow(ctx,
+		`SELECT public_key FROM sftp_keys WHERE id = $1 AND ftp_account_id = $2`, keyID, ftpAccountID,
+	).Scan(&pubKey)
+	if err != nil {
+		return fmt.Errorf("key not found")
+	}
+
+	_, err = s.pool.Exec(ctx, `DELETE FROM sftp_keys WHERE id = $1`, keyID)
+	if err != nil {
+		return err
+	}
+
+	go s.deprovisionSFTPKey(serverID, ftpAccountID, pubKey)
+	return nil
+}
+
+func (s *FTPService) checkFTPOwner(ctx context.Context, ftpAccountID, serverID string, userID uuid.UUID, role string) error {
+	var ownerID uuid.UUID
+	err := s.pool.QueryRow(ctx,
+		`SELECT user_id FROM ftp_accounts WHERE id = $1 AND server_id = $2`, ftpAccountID, serverID,
+	).Scan(&ownerID)
+	if err != nil {
+		return fmt.Errorf("FTP account not found")
+	}
+	if role != "admin" && ownerID != userID {
+		return fmt.Errorf("FTP account not found")
+	}
+	return nil
+}
+
+func (s *FTPService) provisionSFTPKey(serverID, ftpAccountID, pubKey string) {
+	ctx := context.Background()
+	// Get username from DB
+	var username string
+	s.pool.QueryRow(ctx, `SELECT username FROM ftp_accounts WHERE id = $1`, ftpAccountID).Scan(&username)
+	if username == "" {
+		return
+	}
+	srv, err := s.getServerSSH(ctx, serverID)
+	if err != nil {
+		log.Printf("SFTP key provision SSH error: %v", err)
+		return
+	}
+	script := fmt.Sprintf(`
+set -e
+SSHDIR="/home/ftp_%s/.ssh"
+mkdir -p "$SSHDIR"
+chmod 700 "$SSHDIR"
+AK="$SSHDIR/authorized_keys"
+touch "$AK"
+grep -qxF '%s' "$AK" || echo '%s' >> "$AK"
+chmod 600 "$AK"
+chown -R "ftp_%s": "$SSHDIR"
+echo "SFTP_KEY_ADDED"
+`, username, pubKey, pubKey, username)
+	out, err := provisioner.RunScript(srv, script)
+	if err != nil {
+		log.Printf("SFTP key provision error: %v — %s", err, out)
+	}
+}
+
+func (s *FTPService) deprovisionSFTPKey(serverID, ftpAccountID, pubKey string) {
+	ctx := context.Background()
+	var username string
+	s.pool.QueryRow(ctx, `SELECT username FROM ftp_accounts WHERE id = $1`, ftpAccountID).Scan(&username)
+	if username == "" {
+		return
+	}
+	srv, err := s.getServerSSH(ctx, serverID)
+	if err != nil {
+		return
+	}
+	escapedKey := strings.ReplaceAll(pubKey, "/", "\\/")
+	script := fmt.Sprintf(`
+AK="/home/ftp_%s/.ssh/authorized_keys"
+[ -f "$AK" ] && sed -i '/%s/d' "$AK" || true
+echo "SFTP_KEY_REMOVED"
+`, username, escapedKey[:min(len(escapedKey), 30)])
+	provisioner.RunScript(srv, script)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func computeSSHFingerprint(pubKey string) (string, error) {
+	fields := strings.Fields(strings.TrimSpace(pubKey))
+	if len(fields) < 2 {
+		return "", fmt.Errorf("invalid public key format")
+	}
+	// Return truncated key type + first 16 chars of key data as fingerprint
+	return fmt.Sprintf("%s:SHA256:%s…", fields[0], fields[1][:min(len(fields[1]), 16)]), nil
 }

@@ -694,6 +694,8 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 				apps.GET("/:id", appHandler.GetByID)
 				apps.PUT("/:id", appHandler.Update)
 				apps.DELETE("/:id", appHandler.Delete)
+				apps.GET("/:id/env", appHandler.GetEnv)
+				apps.PUT("/:id/env", appHandler.UpdateEnv)
 			}
 
 			deploys := protected.Group("/deployments")
@@ -747,11 +749,14 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 				alerts.GET("/incidents", alertHandler.ListIncidents)
 			}
 
-			// FTP accounts — standalone list (all servers) + per-server CRUD
+			// FTP accounts — standalone list (all servers) + per-server CRUD + SFTP key management
 			protected.GET("/ftp", ftpHandler.List)
 			protected.GET("/servers/:id/ftp", ftpHandler.List)
 			protected.POST("/servers/:id/ftp", ftpHandler.Create)
 			protected.DELETE("/servers/:id/ftp/:ftpID", ftpHandler.Delete)
+			protected.GET("/servers/:id/ftp/:ftpID/keys", ftpHandler.ListKeys)
+			protected.POST("/servers/:id/ftp/:ftpID/keys", ftpHandler.AddKey)
+			protected.DELETE("/servers/:id/ftp/:ftpID/keys/:keyID", ftpHandler.DeleteKey)
 
 			// Reseller management
 			reseller := protected.Group("/reseller")
