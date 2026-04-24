@@ -328,7 +328,14 @@ export default function Settings() {
         } catch (e: any) { toast.error(e?.response?.data?.error || 'Failed to start update'); }
     };
 
-    const isAdmin = userRole === 'admin' || user?.role === 'admin';
+    const tokenRole = (() => {
+        try {
+            const t = localStorage.getItem('novapanel_token');
+            if (!t) return '';
+            return JSON.parse(atob(t.split('.')[1])).role || '';
+        } catch { return ''; }
+    })();
+    const isAdmin = userRole === 'admin' || user?.role === 'admin' || tokenRole === 'admin';
     const tabs = [
         { id: 'profile', label: 'Profile', icon: User },
         { id: 'security', label: 'Password', icon: Lock },
