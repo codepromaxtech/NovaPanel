@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
     LayoutDashboard, Globe, Server, Database, Mail,
     FolderOpen, Shield, Archive, Activity, Rocket,
-    Settings, ChevronLeft, ChevronRight, Zap, CreditCard, Box, Layers, ShieldCheck, ArrowRightLeft, Clock, Cog, Cloud, Users,
+    Settings, ChevronLeft, ChevronRight, Zap, CreditCard, Box, Layers, ShieldCheck, ArrowRightLeft, Clock, Cog, Cloud, Users, HardDrive, Bell,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -29,6 +29,8 @@ const navItems = [
     { to: '/waf', icon: ShieldCheck, label: 'WAF' },
     { to: '/billing', icon: CreditCard, label: 'Billing' },
     { to: '/cloudflare', icon: Cloud, label: 'Cloudflare' },
+    { to: '/ftp', icon: HardDrive, label: 'FTP / SFTP' },
+    { to: '/alerts', icon: Bell, label: 'Alerts' },
     { to: '/team', icon: Users, label: 'Team' },
     { to: '/settings', icon: Settings, label: 'Settings' },
 ];

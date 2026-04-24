@@ -16,11 +16,12 @@ func NewFTPHandler(service *services.FTPService) *FTPHandler {
 	return &FTPHandler{service: service}
 }
 
-// GET /api/v1/servers/:id/ftp
+// GET /api/v1/servers/:id/ftp  or  GET /api/v1/ftp
 func (h *FTPHandler) List(c *gin.Context) {
 	userID := c.MustGet("user_id").(uuid.UUID)
 	role := c.MustGet("user_role").(string)
-	accounts, err := h.service.List(c.Request.Context(), userID, role)
+	serverID := c.Param("id") // empty string when called from /ftp route
+	accounts, err := h.service.List(c.Request.Context(), userID, role, serverID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

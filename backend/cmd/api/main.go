@@ -747,7 +747,8 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 				alerts.GET("/incidents", alertHandler.ListIncidents)
 			}
 
-			// FTP accounts (per-server)
+			// FTP accounts — standalone list (all servers) + per-server CRUD
+			protected.GET("/ftp", ftpHandler.List)
 			protected.GET("/servers/:id/ftp", ftpHandler.List)
 			protected.POST("/servers/:id/ftp", ftpHandler.Create)
 			protected.DELETE("/servers/:id/ftp/:ftpID", ftpHandler.Delete)

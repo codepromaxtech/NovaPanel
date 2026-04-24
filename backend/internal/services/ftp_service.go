@@ -98,12 +98,24 @@ echo "FTP_CREATED"
 	}
 }
 
-func (s *FTPService) List(ctx context.Context, userID uuid.UUID, role string) ([]models.FTPAccount, error) {
+func (s *FTPService) List(ctx context.Context, userID uuid.UUID, role, serverID string) ([]models.FTPAccount, error) {
 	var args []interface{}
+	conditions := []string{}
 	query := `SELECT id, user_id, server_id, username, home_dir, quota_mb, is_active, created_at FROM ftp_accounts`
+
 	if role != "admin" {
 		args = append(args, userID)
-		query += ` WHERE user_id = $1`
+		conditions = append(conditions, fmt.Sprintf("user_id = $%d", len(args)))
+	}
+	if serverID != "" && serverID != "-" {
+		args = append(args, serverID)
+		conditions = append(conditions, fmt.Sprintf("server_id = $%d", len(args)))
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + conditions[0]
+		for _, c := range conditions[1:] {
+			query += " AND " + c
+		}
 	}
 	query += ` ORDER BY created_at DESC`
 

@@ -1,0 +1,26 @@
+import api from './api';
+
+export interface FTPAccount {
+    id: string;
+    user_id: string;
+    server_id: string;
+    username: string;
+    home_dir: string;
+    quota_mb: number;
+    is_active: boolean;
+    created_at: string;
+}
+
+export const ftpService = {
+    async list() {
+        const { data } = await api.get('/servers/-/ftp');
+        return (data.data || []) as FTPAccount[];
+    },
+    async create(serverId: string, payload: { username: string; password: string; home_dir?: string; quota_mb?: number }) {
+        const { data } = await api.post(`/servers/${serverId}/ftp`, payload);
+        return data as FTPAccount;
+    },
+    async delete(serverId: string, ftpID: string) {
+        await api.delete(`/servers/${serverId}/ftp/${ftpID}`);
+    },
+};

@@ -25,6 +25,8 @@ import Services from './pages/Services';
 import Cloudflare from './pages/Cloudflare';
 import TeamManagement from './pages/TeamManagement';
 import Pricing from './pages/Pricing';
+import FTP from './pages/FTP';
+import Alerts from './pages/Alerts';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -77,6 +79,8 @@ export default function App() {
             <Route path="/docker" element={<Docker />} />
             <Route path="/kubernetes" element={<Kubernetes />} />
             <Route path="/team" element={<TeamManagement />} />
+            <Route path="/ftp" element={<FTP />} />
+            <Route path="/alerts" element={<Alerts />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
