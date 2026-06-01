@@ -8,7 +8,7 @@ import { useToast } from '../components/ui/ToastProvider';
 import { useModalLock } from '../hooks/useModalLock';
 import { useAuthStore } from '../store/authStore';
 
-const inputCls = 'w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20';
+const inputCls = 'w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40';
 const btnPrimary = 'flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-nova-600 to-nova-700 text-white text-sm font-medium hover:shadow-lg hover:shadow-nova-500/25 transition-all disabled:opacity-50';
 
 export default function Settings() {

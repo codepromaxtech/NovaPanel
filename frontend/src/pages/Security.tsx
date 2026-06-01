@@ -167,7 +167,7 @@ export default function Security() {
                             <div>
                                 <label className="block text-sm font-medium text-surface-200 mb-1.5">Port *</label>
                                 <input value={form.port} onChange={e => setForm({ ...form, port: e.target.value })}
-                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                     placeholder="e.g. 8080" />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
@@ -194,7 +194,7 @@ export default function Security() {
                             <div>
                                 <label className="block text-sm font-medium text-surface-200 mb-1.5">Description</label>
                                 <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                     placeholder="e.g. Web server port" />
                             </div>
                             <div className="flex gap-3 pt-2">

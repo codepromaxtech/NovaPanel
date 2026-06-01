@@ -118,7 +118,7 @@ export default function Databases() {
 
     useEffect(() => { if (toolServer) ENGINES.forEach(e => checkToolStatus(e.value)); }, [toolServer]);
 
-    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-indigo-500/50 text-sm";
+    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/40 focus:outline-none focus:border-indigo-500/50 text-sm";
     const btnPrimary = "px-6 py-2.5 rounded-lg bg-gradient-to-r from-indigo-600 to-indigo-700 text-white text-sm font-medium hover:from-indigo-500 hover:to-indigo-600 transition-all shadow-lg shadow-indigo-500/20";
     const btnSecondary = "px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 hover:text-white hover:border-surface-700 transition-colors text-sm";
 

@@ -455,7 +455,7 @@ export default function Deployments() {
                                                                         <span className={`ml-auto text-[10px] ${cfg.color}`}>{t.status}</span>
                                                                         {t.commit_hash && <span className="text-[10px] font-mono text-surface-200/30">{t.commit_hash}</span>}
                                                                     </summary>
-                                                                    <pre className="text-[11px] text-green-300 font-mono leading-5 whitespace-pre-wrap max-h-40 overflow-y-auto custom-scrollbar bg-[#0d1117] p-3">
+                                                                    <pre className="text-[11px] text-green-300 font-mono leading-5 whitespace-pre-wrap max-h-40 overflow-y-auto custom-scrollbar bg-surface-950 p-3">
                                                                         {t.build_log || 'No log yet'}
                                                                     </pre>
                                                                 </details>
@@ -507,14 +507,14 @@ export default function Deployments() {
                             <div>
                                 <label className="block text-sm font-medium text-surface-200 mb-1.5">Application Name</label>
                                 <input value={appForm.name} onChange={e => setAppForm(p => ({ ...p, name: e.target.value }))}
-                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                     placeholder="my-web-app" />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-surface-200 mb-1.5">Target Server</label>
                                 <select value={appForm.server_id} onChange={e => setAppForm(p => ({ ...p, server_id: e.target.value }))}
-                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent">
+                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30">
                                     <option value="">Select a server...</option>
                                     {servers.map(s => (
                                         <option key={s.id} value={s.id}>{s.name} ({s.ip_address})</option>
@@ -538,14 +538,14 @@ export default function Deployments() {
                             <div>
                                 <label className="block text-sm font-medium text-surface-200 mb-1.5">Git Repository URL</label>
                                 <input value={appForm.git_repo} onChange={e => setAppForm(p => ({ ...p, git_repo: e.target.value }))}
-                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                     placeholder="https://github.com/username/repo.git" />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-surface-200 mb-1.5">Branch</label>
                                 <input value={appForm.git_branch} onChange={e => setAppForm(p => ({ ...p, git_branch: e.target.value }))}
-                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                     placeholder="main" />
                             </div>
 
@@ -581,7 +581,7 @@ export default function Deployments() {
                                     const app = apps.find(a => a.id === e.target.value);
                                     if (app) setDeployBranch(app.git_branch || 'main');
                                 }}
-                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent">
+                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30">
                                     {apps.map(a => (
                                         <option key={a.id} value={a.id}>{a.name} ({a.runtime})</option>
                                     ))}
@@ -590,7 +590,7 @@ export default function Deployments() {
                             <div>
                                 <label className="block text-sm font-medium text-surface-200 mb-1.5">Branch</label>
                                 <input value={deployBranch} onChange={e => setDeployBranch(e.target.value)}
-                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                     placeholder="main" />
                             </div>
 
@@ -655,7 +655,7 @@ export default function Deployments() {
                             </h3>
                             <button onClick={closeLogs} className="text-surface-200/40 hover:text-white"><X className="w-5 h-5" /></button>
                         </div>
-                        <pre ref={logRef} className="bg-[#0d1117] rounded-xl p-4 text-xs text-green-300 font-mono leading-5 whitespace-pre-wrap max-h-[60vh] overflow-y-auto custom-scrollbar border border-white/5">
+                        <pre ref={logRef} className="bg-surface-950 rounded-xl p-4 text-xs text-green-300 font-mono leading-5 whitespace-pre-wrap max-h-[60vh] overflow-y-auto custom-scrollbar border border-white/5">
                             {logContent || 'Waiting for logs...'}
                         </pre>
                     </div>

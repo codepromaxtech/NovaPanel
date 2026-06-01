@@ -50,6 +50,18 @@
     overflow-x: hidden;
   }
 
+  /* Force all native form controls into dark mode so browser-rendered
+     dropdowns, date pickers, etc. match the dark theme. */
+  input, textarea, select, button {
+    color-scheme: dark;
+  }
+
+  /* Style native <select> dropdown options to match dark theme */
+  select option {
+    background-color: var(--color-surface-800);
+    color: var(--color-surface-50);
+  }
+
   /* Custom Scrollbar for a premium feel */
   ::-webkit-scrollbar {
     width: 6px;

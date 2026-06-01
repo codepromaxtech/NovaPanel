@@ -81,7 +81,7 @@ export default function Transfers() {
     };
     const serverName = (id: string) => servers.find(s => s.id === id)?.name || id?.slice(0, 8) || '—';
 
-    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-cyan-500/50 text-sm";
+    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/40 focus:outline-none focus:border-cyan-500/50 text-sm";
     const btnPrimary = "px-6 py-2.5 rounded-lg bg-gradient-to-r from-cyan-600 to-cyan-700 text-white text-sm font-medium hover:from-cyan-500 hover:to-cyan-600 transition-all shadow-lg shadow-cyan-500/20";
     const btnSecondary = "px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 hover:text-white hover:border-surface-700 transition-colors text-sm";
 

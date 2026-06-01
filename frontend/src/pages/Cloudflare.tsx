@@ -206,7 +206,7 @@ export default function Cloudflare() {
         setAddingServer(false);
     };
 
-    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-orange-500/50 text-sm";
+    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/40 focus:outline-none focus:border-orange-500/50 text-sm";
     const btnPrimary = "px-6 py-2.5 rounded-lg bg-gradient-to-r from-orange-600 to-orange-700 text-white text-sm font-medium hover:from-orange-500 hover:to-orange-600 transition-all shadow-lg shadow-orange-500/20";
 
     // ──── NOT CONNECTED ────

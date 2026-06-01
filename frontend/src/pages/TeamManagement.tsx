@@ -174,11 +174,11 @@ export default function TeamManagement() {
                     <table className="w-full">
                         <thead>
                             <tr className="border-b border-white/5">
-                                <th className="text-left px-5 py-3 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Member</th>
-                                <th className="text-left px-5 py-3 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Role</th>
-                                <th className="text-left px-5 py-3 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Scope</th>
-                                <th className="text-left px-5 py-3 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Status</th>
-                                <th className="text-right px-5 py-3 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Actions</th>
+                                <th className="text-left px-5 py-3 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Member</th>
+                                <th className="text-left px-5 py-3 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Role</th>
+                                <th className="text-left px-5 py-3 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Scope</th>
+                                <th className="text-left px-5 py-3 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Status</th>
+                                <th className="text-right px-5 py-3 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -252,7 +252,7 @@ export default function TeamManagement() {
                                     type="email"
                                     value={inviteForm.email}
                                     onChange={e => setInviteForm(p => ({ ...p, email: e.target.value }))}
-                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                     placeholder="colleague@company.com"
                                 />
                                 <p className="text-xs text-surface-200/50 mt-1">Must be a registered NovaPanel user</p>
@@ -264,7 +264,7 @@ export default function TeamManagement() {
                                     <select
                                         value={inviteForm.role}
                                         onChange={e => setInviteForm(p => ({ ...p, role: e.target.value }))}
-                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent appearance-none"
+                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 appearance-none"
                                     >
                                         {ROLES.map(r => (
                                             <option key={r} value={r} className="bg-surface-800 capitalize">{r}</option>
@@ -285,7 +285,7 @@ export default function TeamManagement() {
                                     <select
                                         value={inviteForm.scope_type}
                                         onChange={e => setInviteForm(p => ({ ...p, scope_type: e.target.value, scope_id: '' }))}
-                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent appearance-none"
+                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 appearance-none"
                                     >
                                         {SCOPE_TYPES.map(s => (
                                             <option key={s.id} value={s.id} className="bg-surface-800">{s.label}</option>
@@ -302,7 +302,7 @@ export default function TeamManagement() {
                                         <select
                                             value={inviteForm.scope_id}
                                             onChange={e => setInviteForm(p => ({ ...p, scope_id: e.target.value }))}
-                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent appearance-none"
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 appearance-none"
                                         >
                                             <option value="" className="bg-surface-800">— Select server —</option>
                                             {scopeServers.map(s => (
@@ -320,7 +320,7 @@ export default function TeamManagement() {
                                         <select
                                             value={inviteForm.scope_id}
                                             onChange={e => setInviteForm(p => ({ ...p, scope_id: e.target.value }))}
-                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent appearance-none"
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 appearance-none"
                                         >
                                             <option value="" className="bg-surface-800">— Select domain —</option>
                                             {scopeDomains.map(d => (

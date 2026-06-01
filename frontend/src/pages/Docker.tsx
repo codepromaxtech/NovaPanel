@@ -312,7 +312,7 @@ export default function Docker() {
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span className="text-white font-medium text-sm truncate">{c.name}</span>
-                                            <span className={`text-xs px-2 py-0.5 rounded-full border ${stateColors[c.state] || 'text-gray-400 bg-gray-400/10 border-gray-400/30'}`}>{c.state}</span>
+                                            <span className={`text-xs px-2 py-0.5 rounded-full border ${stateColors[c.state] || 'text-surface-400 bg-surface-400/10 border-surface-400/30'}`}>{c.state}</span>
                                         </div>
                                         <div className="flex items-center gap-3 mt-1 text-xs text-surface-200/40">
                                             <span className="font-mono">{c.id}</span>
@@ -592,7 +592,7 @@ export default function Docker() {
                         <div className="bg-surface-800/50 border border-surface-700/50 rounded-xl overflow-hidden">
                             <table className="w-full text-sm">
                                 <thead>
-                                    <tr className="border-b border-surface-700/50 text-surface-200/40 text-xs">
+                                    <tr className="border-b border-surface-700/50 text-surface-200/60 text-xs">
                                         <th className="text-left px-4 py-3">Time</th>
                                         <th className="text-left px-4 py-3">Type</th>
                                         <th className="text-left px-4 py-3">Action</th>

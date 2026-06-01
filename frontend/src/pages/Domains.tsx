@@ -191,7 +191,7 @@ export default function Domains() {
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search domains..."
-                        className="w-full pl-10 pr-4 py-2.5 bg-surface-800 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-nova-500/50 text-sm"
+                        className="w-full pl-10 pr-4 py-2.5 bg-surface-800 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/40 focus:outline-none focus:border-nova-500/50 text-sm"
                     />
                 </div>
                 <button className="flex items-center gap-2 px-4 py-2.5 bg-surface-800 border border-surface-700/50 rounded-lg text-surface-200/60 hover:text-white hover:border-surface-700 transition-colors text-sm">
@@ -204,13 +204,13 @@ export default function Domains() {
                 <table className="w-full">
                     <thead>
                         <tr className="border-b border-surface-700/50">
-                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Domain</th>
-                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Type</th>
-                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Web Server</th>
-                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">PHP</th>
-                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">SSL</th>
-                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Status</th>
-                            <th className="text-right px-5 py-3.5 text-xs font-semibold text-surface-200/40 uppercase tracking-wider">Actions</th>
+                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Domain</th>
+                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Type</th>
+                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Web Server</th>
+                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">PHP</th>
+                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">SSL</th>
+                            <th className="text-left px-5 py-3.5 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Status</th>
+                            <th className="text-right px-5 py-3.5 text-xs font-semibold text-surface-200/60 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -391,7 +391,7 @@ export default function Domains() {
                                     type="text"
                                     value={newDomain.name}
                                     onChange={(e) => setNewDomain({ ...newDomain, name: e.target.value })}
-                                    className="w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-nova-500/50 text-sm"
+                                    className="w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/40 focus:outline-none focus:border-nova-500/50 text-sm"
                                     placeholder="example.com"
                                 />
                             </div>
@@ -413,7 +413,7 @@ export default function Domains() {
                                 <div>
                                     <label className="block text-sm font-medium text-surface-200/60 mb-1.5">Target Server</label>
                                     <select value={newDomain.server_id} onChange={e => setNewDomain({ ...newDomain, server_id: e.target.value })}
-                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent">
+                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30">
                                         <option value="">Select a server...</option>
                                         {servers.map(s => (
                                             <option key={s.id} value={s.id}>{s.name} ({s.ip_address})</option>
@@ -461,7 +461,7 @@ export default function Domains() {
                                     <div>
                                         <label className="block text-sm font-medium text-surface-200/60 mb-1.5">Web Server</label>
                                         <select value={newDomain.web_server} onChange={e => setNewDomain({ ...newDomain, web_server: e.target.value })}
-                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent">
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30">
                                             <option value="nginx">Nginx</option>
                                             <option value="apache">Apache</option>
                                             <option value="openlitespeed">OpenLiteSpeed</option>
@@ -473,7 +473,7 @@ export default function Domains() {
                                     <label className="block text-sm font-medium text-surface-200/60 mb-1.5">PHP Version</label>
                                     <div className="space-y-2">
                                         <select value={newDomain.php_version} onChange={e => setNewDomain({ ...newDomain, php_version: e.target.value })}
-                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent">
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30">
                                             <option value="8.5">PHP 8.5</option>
                                             <option value="8.4">PHP 8.4</option>
                                             <option value="8.3">PHP 8.3</option>

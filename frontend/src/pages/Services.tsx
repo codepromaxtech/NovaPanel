@@ -63,7 +63,7 @@ export default function Services() {
     };
 
     const lines = output.split('\n').filter(l => l.trim());
-    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-teal-500/50 text-sm";
+    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/40 focus:outline-none focus:border-teal-500/50 text-sm";
 
     return (
         <div className="space-y-6">

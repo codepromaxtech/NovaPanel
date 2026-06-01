@@ -172,7 +172,7 @@ export default function FileManager() {
     const regularFiles = files.filter(f => !f.is_dir).sort((a, b) => a.name.localeCompare(b.name));
     const sorted = [...dirs, ...regularFiles];
 
-    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-nova-500/50 text-sm";
+    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/40 focus:outline-none focus:border-nova-500/50 text-sm";
 
     // ─── No server selected ───
     if (!serverId) {

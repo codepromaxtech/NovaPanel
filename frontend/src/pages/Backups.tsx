@@ -85,7 +85,7 @@ export default function Backups() {
         try { await backupManagerService.deleteFile(bkServer, filePath); toast.success('Deleted'); handleListFiles(); } catch { toast.error('Failed'); }
     };
 
-    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-violet-500/50 text-sm";
+    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/40 focus:outline-none focus:border-violet-500/50 text-sm";
     const btnPrimary = "px-6 py-2.5 rounded-lg bg-gradient-to-r from-violet-600 to-violet-700 text-white text-sm font-medium hover:from-violet-500 hover:to-violet-600 transition-all shadow-lg shadow-violet-500/20";
     const TABS: { id: Tab; label: string; icon: any }[] = [
         { id: 'list', label: 'Backup History', icon: Archive },

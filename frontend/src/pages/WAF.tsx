@@ -89,7 +89,7 @@ export default function WAF() {
         try { await wafService.removeWhitelist(id); toast.success('Removed'); fetchWhitelist(); } catch { toast.error('Failed'); }
     };
 
-    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/20 focus:outline-none focus:border-nova-500/50 text-sm";
+    const inputCls = "w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white placeholder:text-surface-200/40 focus:outline-none focus:border-nova-500/50 text-sm";
     const btnPrimary = "px-6 py-2.5 rounded-lg bg-gradient-to-r from-nova-600 to-nova-700 text-white text-sm font-medium hover:from-nova-500 hover:to-nova-600 transition-all shadow-lg shadow-nova-500/20";
     const btnSecondary = "px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 hover:text-white hover:border-surface-700 transition-colors text-sm";
 
@@ -295,13 +295,13 @@ export default function WAF() {
                                 <table className="w-full">
                                     <thead>
                                         <tr className="border-b border-surface-700/50">
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/40 uppercase">Time</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/40 uppercase">Client IP</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/40 uppercase">Rule</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/40 uppercase">URI</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/40 uppercase">Severity</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/40 uppercase">Action</th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/40 uppercase">Message</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/60 uppercase">Time</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/60 uppercase">Client IP</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/60 uppercase">Rule</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/60 uppercase">URI</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/60 uppercase">Severity</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/60 uppercase">Action</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-surface-200/60 uppercase">Message</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-surface-700/30">

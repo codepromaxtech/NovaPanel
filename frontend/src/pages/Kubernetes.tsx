@@ -180,13 +180,13 @@ export default function Kubernetes() {
                 <div className="flex items-center gap-3">
                     {clusters.length > 0 && (
                         <select value={selectedCluster} onChange={e => setSelectedCluster(e.target.value)}
-                            className="px-3 py-2 rounded-lg glass-input text-white text-sm bg-transparent">
+                            className="px-3 py-2 rounded-lg glass-input text-white text-sm">
                             {clusters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                     )}
                     {selectedCluster && namespaces.length > 0 && tab !== 'clusters' && (
                         <select value={selectedNs} onChange={e => setSelectedNs(e.target.value)}
-                            className="px-3 py-2 rounded-lg glass-input text-white text-sm bg-transparent">
+                            className="px-3 py-2 rounded-lg glass-input text-white text-sm">
                             <option value="">All Namespaces</option>
                             {namespaces.map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
@@ -242,22 +242,22 @@ export default function Kubernetes() {
                         <thead>
                             <tr className="border-b border-white/5">
                                 {tab === 'events' ? (
-                                    <><th className="text-left p-3 text-surface-200/40 font-medium">Type</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Reason</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Object</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Message</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Count</th></>
+                                    <><th className="text-left p-3 text-surface-200/60 font-medium">Type</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Reason</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Object</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Message</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Count</th></>
                                 ) : tab === 'crds' ? (
-                                    <><th className="text-left p-3 text-surface-200/40 font-medium">Name</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Group</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Kind</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Scope</th></>
+                                    <><th className="text-left p-3 text-surface-200/60 font-medium">Name</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Group</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Kind</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Scope</th></>
                                 ) : (
-                                    <><th className="text-left p-3 text-surface-200/40 font-medium">Type</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Name</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Namespace</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Status</th>
-                                        <th className="text-left p-3 text-surface-200/40 font-medium">Age</th></>
+                                    <><th className="text-left p-3 text-surface-200/60 font-medium">Type</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Name</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Namespace</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Status</th>
+                                        <th className="text-left p-3 text-surface-200/60 font-medium">Age</th></>
                                 )}
                             </tr>
                         </thead>

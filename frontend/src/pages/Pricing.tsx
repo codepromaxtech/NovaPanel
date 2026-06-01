@@ -185,7 +185,7 @@ function CheckoutModal({ plan, cycle, onClose }: { plan: typeof plans[0]; cycle:
                     <div>
                         <label className="block text-sm font-medium text-surface-200 mb-1.5">Your Email</label>
                         <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                             placeholder="you@company.com" />
                         <p className="text-xs text-surface-200/40 mt-1">Your license key will be sent here after payment.</p>
                     </div>
@@ -370,7 +370,7 @@ export default function Pricing() {
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="border-b border-white/5 bg-surface-900/80">
-                                        <th className="text-left px-5 py-4 text-surface-200/40 font-medium w-48">Feature</th>
+                                        <th className="text-left px-5 py-4 text-surface-200/60 font-medium w-48">Feature</th>
                                         {plans.map(p => (
                                             <th key={p.id} className={`px-4 py-4 font-semibold text-center ${p.accent}`}>{p.name}</th>
                                         ))}

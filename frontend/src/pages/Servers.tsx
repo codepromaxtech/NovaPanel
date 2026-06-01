@@ -416,7 +416,7 @@ export default function Servers() {
                 <div>
                     <label className="block text-sm font-medium text-surface-200 mb-1.5">SSH Username</label>
                     <input value={data.ssh_user} onChange={e => setData(prev => ({ ...prev, ssh_user: e.target.value }))}
-                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                         placeholder="root" />
                 </div>
                 <div>
@@ -443,14 +443,14 @@ export default function Servers() {
                     <input type="file" ref={fileRef} className="hidden" accept=".pem,.key,.pub,.ppk,*"
                         onChange={e => handleKeyFileUpload(e, data === formData ? 'create' : 'edit')} />
                     <textarea value={data.ssh_key} onChange={e => setData(prev => ({ ...prev, ssh_key: e.target.value }))}
-                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-xs font-mono focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20 whitespace-pre custom-scrollbar"
+                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-xs font-mono focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40 whitespace-pre custom-scrollbar"
                         placeholder={"-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"} rows={4} />
                 </div>
             ) : (
                 <div>
                     <label className="block text-sm font-medium text-surface-200 mb-1.5">SSH Password</label>
                     <input type="password" value={data.ssh_password} onChange={e => setData(prev => ({ ...prev, ssh_password: e.target.value }))}
-                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                         placeholder="Enter SSH password" />
                 </div>
             )}
@@ -607,13 +607,13 @@ export default function Servers() {
                                     <div>
                                         <label className="block text-sm font-medium text-surface-200 mb-1.5">Server Name</label>
                                         <input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                             placeholder="production-01" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-surface-200 mb-1.5">Hostname</label>
                                         <input value={formData.hostname} onChange={e => setFormData({ ...formData, hostname: e.target.value })}
-                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                             placeholder="server.example.com" />
                                     </div>
                                 </div>
@@ -640,7 +640,7 @@ export default function Servers() {
                                         <div>
                                             <label className="block text-sm font-medium text-surface-200 mb-1.5">IP Address</label>
                                             <input value={formData.ip_address} onChange={e => { setFormData({ ...formData, ip_address: e.target.value }); setTestResult(null); }}
-                                                className={`w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 placeholder:text-surface-200/20 ${formData.ip_address && !isValidIP(formData.ip_address) ? 'focus:ring-red-500/30 border-red-500/30' : 'focus:ring-nova-500/30'}`}
+                                                className={`w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 placeholder:text-surface-200/40 ${formData.ip_address && !isValidIP(formData.ip_address) ? 'focus:ring-red-500/30 border-red-500/30' : 'focus:ring-nova-500/30'}`}
                                                 placeholder="0.0.0.0" />
                                             {formData.ip_address && !isValidIP(formData.ip_address) && (
                                                 <p className="text-[10px] text-red-400 mt-1">Invalid IP address format</p>
@@ -661,20 +661,20 @@ export default function Servers() {
                                         <div>
                                             <label className="block text-sm font-medium text-surface-200 mb-1.5">CF Tunnel Hostname</label>
                                             <input value={formData.cf_hostname} onChange={e => setFormData({ ...formData, cf_hostname: e.target.value })}
-                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                                 placeholder="ssh.example.com" />
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-sm font-medium text-surface-200 mb-1.5">Client ID</label>
                                                 <input value={formData.cf_client_id} onChange={e => setFormData({ ...formData, cf_client_id: e.target.value })}
-                                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                                     placeholder="xxxx.access" />
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-surface-200 mb-1.5">Client Secret</label>
                                                 <input type="password" value={formData.cf_client_secret} onChange={e => setFormData({ ...formData, cf_client_secret: e.target.value })}
-                                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                    className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                                     placeholder="••••••••" />
                                             </div>
                                         </div>
@@ -689,7 +689,7 @@ export default function Servers() {
                                     <div>
                                         <label className="block text-sm font-medium text-surface-200 mb-1.5">Role</label>
                                         <select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}
-                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent">
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30">
                                             <option value="worker">Worker — Runs web apps & databases</option>
                                             <option value="master">Master — Panel host only</option>
                                             <option value="database">Database — Dedicated DB node</option>
@@ -833,20 +833,20 @@ export default function Servers() {
                                     <div>
                                         <label className="block text-sm font-medium text-surface-200 mb-1.5">CF Tunnel Hostname</label>
                                         <input value={editData.cf_hostname} onChange={e => setEditData({ ...editData, cf_hostname: e.target.value })}
-                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                             placeholder="ssh.example.com" />
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="block text-sm font-medium text-surface-200 mb-1.5">Client ID</label>
                                             <input value={editData.cf_client_id} onChange={e => setEditData({ ...editData, cf_client_id: e.target.value })}
-                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                                 placeholder="leave blank to keep" />
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-surface-200 mb-1.5">Client Secret</label>
                                             <input type="password" value={editData.cf_client_secret} onChange={e => setEditData({ ...editData, cf_client_secret: e.target.value })}
-                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
+                                                className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/40"
                                                 placeholder="leave blank to keep" />
                                         </div>
                                     </div>
@@ -861,7 +861,7 @@ export default function Servers() {
                                 <div>
                                     <label className="block text-sm font-medium text-surface-200 mb-1.5">Role</label>
                                     <select value={editData.role} onChange={e => setEditData({ ...editData, role: e.target.value })}
-                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent">
+                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30">
                                         <option value="worker">Worker</option>
                                         <option value="master">Master</option>
                                         <option value="database">Database</option>

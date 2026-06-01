@@ -160,7 +160,7 @@ export default function TerminalPage() {
                 <div className="flex items-center gap-3">
                     <button onClick={() => navigate('/servers')}
                         className="p-1.5 rounded-lg transition-all hover:bg-white/5">
-                        <ArrowLeft className="w-4 h-4 text-gray-400" />
+                        <ArrowLeft className="w-4 h-4 text-surface-400" />
                     </button>
                     <TerminalIcon className="w-5 h-5 text-violet-400" />
                     <div>
@@ -176,7 +176,7 @@ export default function TerminalPage() {
                 </div>
                 <button onClick={() => setFullscreen(!fullscreen)}
                     className="p-1.5 rounded-lg transition-all hover:bg-white/5">
-                    {fullscreen ? <Minimize2 className="w-4 h-4 text-gray-400" /> : <Maximize2 className="w-4 h-4 text-gray-400" />}
+                    {fullscreen ? <Minimize2 className="w-4 h-4 text-surface-400" /> : <Maximize2 className="w-4 h-4 text-surface-400" />}
                 </button>
             </div>
             {/* Terminal */}

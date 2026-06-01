@@ -216,7 +216,7 @@ export default function Login() {
                                     <div className="relative group">
                                         <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-200/40 group-focus-within:text-nova-400 transition-colors" />
                                         <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                                            className="block w-full pl-11 pr-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/20"
+                                            className="block w-full pl-11 pr-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/40"
                                             placeholder="admin@company.com" />
                                     </div>
                                 </div>
@@ -268,7 +268,7 @@ export default function Login() {
                                             type="text"
                                             value={firstName}
                                             onChange={(e) => setFirstName(e.target.value)}
-                                            className="block w-full pl-11 pr-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/20"
+                                            className="block w-full pl-11 pr-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/40"
                                             placeholder="John"
                                             required={!isLogin}
                                         />
@@ -281,7 +281,7 @@ export default function Login() {
                                             type="text"
                                             value={lastName}
                                             onChange={(e) => setLastName(e.target.value)}
-                                            className="block w-full px-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/20"
+                                            className="block w-full px-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/40"
                                             placeholder="Doe"
                                             required={!isLogin}
                                         />
@@ -300,7 +300,7 @@ export default function Login() {
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="block w-full pl-11 pr-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/20"
+                                    className="block w-full pl-11 pr-4 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/40"
                                     placeholder="admin@company.com"
                                     required
                                 />
@@ -325,7 +325,7 @@ export default function Login() {
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="block w-full pl-11 pr-12 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/20 tracking-wide"
+                                    className="block w-full pl-11 pr-12 py-3 rounded-xl glass-input text-white focus:outline-none focus:ring-2 focus:ring-nova-500/50 transition-all sm:text-sm placeholder:text-surface-200/40 tracking-wide"
                                     placeholder="••••••••"
                                     required
                                     minLength={8}
