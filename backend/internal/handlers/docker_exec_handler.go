@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,13 @@ func NewDockerExecHandler(dockerService *services.DockerService) *DockerExecHand
 }
 
 var execUpgrader = ws.Upgrader{
-	CheckOrigin:     func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		return strings.Contains(origin, r.Host)
+	},
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
 }

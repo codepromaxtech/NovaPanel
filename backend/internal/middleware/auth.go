@@ -33,6 +33,10 @@ func AuthMiddleware(cfg *config.Config, rdb *redis.Client) gin.HandlerFunc {
 		} else if qToken := c.Query("token"); qToken != "" {
 			// WebSocket connections pass token as query parameter
 			tokenStr = qToken
+		} else if c.GetHeader("X-API-Key") != "" {
+			// API key auth — let the APIKeyAuth middleware handle this request
+			c.Next()
+			return
 		} else {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
 			return

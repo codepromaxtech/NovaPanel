@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { dockerService } from '../services/docker';
 import { useAuthStore } from '../store/authStore';
+import { useToast } from '../components/ui/ToastProvider';
 
 type Tab = 'containers' | 'images' | 'volumes' | 'networks' | 'stacks' | 'templates' | 'system' | 'events';
 
@@ -64,6 +65,7 @@ export default function Docker() {
     const [inspectModal, setInspectModal] = useState<{ id: string; name: string; data: string } | null>(null);
     const [showCreate, setShowCreate] = useState(false);
     const { token } = useAuthStore();
+    const toast = useToast();
 
     // Forms
     const [newContainer, setNewContainer] = useState({ name: '', image: '', env: '', restart: 'unless-stopped', ports: '', memory_mb: 0, cpus: 0 });
@@ -140,8 +142,8 @@ export default function Docker() {
 
     const openExec = (id: string) => {
         const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${wsProto}//${window.location.hostname}:8080/api/v1/docker/containers/${id}/exec?shell=/bin/sh&token=${token}`;
-        window.open(`/servers/${id}/terminal?ws=${encodeURIComponent(url)}&title=Container+Exec`, '_blank');
+        const url = `${wsProto}//${window.location.host}/api/v1/docker/containers/${id}/exec?shell=/bin/sh&token=${token}`;
+        window.open(`/servers/docker-${id}/terminal?ws=${encodeURIComponent(url)}&title=Container+Exec`, '_blank');
     };
 
     const renameContainer = async (id: string) => {
@@ -194,7 +196,7 @@ export default function Docker() {
     const prune = async () => {
         if (!confirm('This will remove all stopped containers, unused images, volumes, and networks. Continue?')) return;
         const result = await dockerService.pruneSystem();
-        alert(`Pruned: ${result.containers_deleted} containers, ${result.images_deleted} images, ${result.volumes_deleted} volumes, ${result.networks_deleted} networks. Reclaimed: ${fmtBytes(result.space_reclaimed)}`);
+        toast.success(`Pruned: ${result.containers_deleted} containers, ${result.images_deleted} images, ${result.volumes_deleted} volumes, ${result.networks_deleted} networks. Reclaimed: ${fmtBytes(result.space_reclaimed)}`);
         load();
     };
 

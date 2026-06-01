@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Terminal as TerminalIcon, ArrowLeft, Wifi, WifiOff, Maximize2, Minimize2 } from 'lucide-react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -8,12 +8,15 @@ import '@xterm/xterm/css/xterm.css';
 export default function TerminalPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const customWsUrl = searchParams.get('ws');
+    const customTitle = searchParams.get('title');
     const termRef = useRef<HTMLDivElement>(null);
     const xtermRef = useRef<XTerm | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const fitRef = useRef<FitAddon | null>(null);
     const [connected, setConnected] = useState(false);
-    const [serverName, setServerName] = useState('');
+    const [serverName, setServerName] = useState(customTitle ? decodeURIComponent(customTitle) : '');
     const [fullscreen, setFullscreen] = useState(false);
 
     useEffect(() => {
@@ -64,10 +67,11 @@ export default function TerminalPage() {
         term.writeln('');
         term.writeln('\x1b[33mConnecting to server...\x1b[0m');
 
-        // Connect WebSocket
+        // Connect WebSocket — use custom URL (e.g. Docker exec) if provided, else SSH terminal
         const token = localStorage.getItem('novapanel_token');
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${wsProtocol}//${window.location.host}/api/v1/servers/${id}/terminal?token=${token}`;
+        const defaultWsUrl = `${wsProtocol}//${window.location.host}/api/v1/servers/${id}/terminal?token=${token}`;
+        const wsUrl = customWsUrl ? decodeURIComponent(customWsUrl) : defaultWsUrl;
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
@@ -124,12 +128,14 @@ export default function TerminalPage() {
         };
         window.addEventListener('resize', handleResize);
 
-        // Fetch server name
-        fetch(`/api/v1/servers/${id}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        }).then(r => r.json()).then((data: { name?: string }) => {
-            if (data.name) setServerName(data.name);
-        }).catch(() => { });
+        // Fetch server name only when connecting to a real server (not Docker exec)
+        if (!customWsUrl) {
+            fetch(`/api/v1/servers/${id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.json()).then((data: { name?: string }) => {
+                if (data.name) setServerName(data.name);
+            }).catch(() => { });
+        }
 
         return () => {
             window.removeEventListener('resize', handleResize);

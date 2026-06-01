@@ -37,12 +37,22 @@ export default function Dashboard() {
     }, []);
 
     const actionIcons: Record<string, any> = {
-        'domain.created': Globe, 'ssl.issued': Shield, 'deployment.success': Zap,
-        'server.created': Server, 'backup.completed': Activity,
+        'domain.created': Globe, 'domain.deleted': Globe,
+        'ssl.issued': Shield,
+        'deployment.success': Zap, 'application.deployed': Zap,
+        'application.created': AppWindow, 'application.deleted': AppWindow,
+        'server.created': Server, 'server.deleted': Server,
+        'backup.completed': Activity,
+        'database.created': Activity, 'database.deleted': Activity,
     };
     const actionColors: Record<string, string> = {
-        'domain.created': 'text-success', 'ssl.issued': 'text-nova-400', 'deployment.success': 'text-warning',
-        'server.created': 'text-info', 'backup.completed': 'text-success',
+        'domain.created': 'text-success', 'domain.deleted': 'text-danger',
+        'ssl.issued': 'text-nova-400',
+        'deployment.success': 'text-warning', 'application.deployed': 'text-warning',
+        'application.created': 'text-success', 'application.deleted': 'text-danger',
+        'server.created': 'text-info', 'server.deleted': 'text-danger',
+        'backup.completed': 'text-success',
+        'database.created': 'text-success', 'database.deleted': 'text-danger',
     };
 
     const timeAgo = (d: string) => {
@@ -102,7 +112,9 @@ export default function Dashboard() {
                 <div className="lg:col-span-2 bg-surface-800/50 border border-surface-700/50 rounded-xl p-5">
                     <div className="flex items-center justify-between mb-5">
                         <h2 className="text-lg font-semibold text-white">Recent Activity</h2>
-                        <button className="text-xs text-nova-400 hover:text-nova-300 transition-colors flex items-center gap-1">
+                        <button
+                            onClick={() => navigate('/settings?tab=audit')}
+                            className="text-xs text-nova-400 hover:text-nova-300 transition-colors flex items-center gap-1">
                             View all <ArrowUpRight className="w-3 h-3" />
                         </button>
                     </div>

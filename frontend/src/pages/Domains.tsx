@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useModalLock } from '../hooks/useModalLock';
 import {
-    Globe, Plus, Search, Filter, MoreVertical, ExternalLink,
+    Globe, Plus, Search, Filter, X,
     Shield, CheckCircle, XCircle, AlertTriangle, Trash2, Edit, Eye, Loader,
 } from 'lucide-react';
 import type { Domain, Server } from '../types';
@@ -85,6 +85,32 @@ export default function Domains() {
             loadDomains();
         } catch {
             toast.error('Failed to delete domain');
+        }
+    };
+
+    // Edit modal state
+    const [editDomain, setEditDomain] = useState<Domain | null>(null);
+    const [editForm, setEditForm] = useState({ web_server: 'nginx', php_version: '8.2' });
+    const [editSaving, setEditSaving] = useState(false);
+    useModalLock(!!editDomain);
+
+    const openEdit = (domain: Domain) => {
+        setEditDomain(domain);
+        setEditForm({ web_server: domain.web_server || 'nginx', php_version: domain.php_version || '8.2' });
+    };
+
+    const handleEditSave = async () => {
+        if (!editDomain) return;
+        setEditSaving(true);
+        try {
+            await domainService.update(editDomain.id, editForm);
+            toast.success('Domain updated');
+            setEditDomain(null);
+            loadDomains();
+        } catch {
+            toast.error('Failed to update domain');
+        } finally {
+            setEditSaving(false);
         }
     };
 
@@ -263,7 +289,9 @@ export default function Domains() {
                                     <td className="px-5 py-4">{statusBadge(domain.status)}</td>
                                     <td className="px-5 py-4">
                                         <div className="flex items-center justify-end gap-2">
-                                            <button className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white transition-colors" title="Visit domain">
+                                            <button
+                                                onClick={() => window.open(`https://${domain.name}`, '_blank', 'noopener,noreferrer')}
+                                                className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white transition-colors" title="Visit domain">
                                                 <Eye className="w-4 h-4" />
                                             </button>
                                             <button
@@ -273,7 +301,9 @@ export default function Domains() {
                                                 className="p-1.5 rounded-lg hover:bg-nova-500/20 text-surface-200/40 hover:text-nova-400 transition-colors disabled:opacity-40">
                                                 {sslLoading === domain.id ? <Loader className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
                                             </button>
-                                            <button className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white transition-colors" title="Edit domain">
+                                            <button
+                                                onClick={() => openEdit(domain)}
+                                                className="p-1.5 rounded-lg hover:bg-surface-700/50 text-surface-200/40 hover:text-white transition-colors" title="Edit domain">
                                                 <Edit className="w-4 h-4" />
                                             </button>
                                             <button onClick={() => handleDeleteDomain(domain.id, domain.name)}
@@ -288,6 +318,65 @@ export default function Domains() {
                     </tbody>
                 </table>
             </div>
+
+            {/* Edit Domain Modal */}
+            {editDomain && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-surface-800 border border-surface-700/50 rounded-2xl p-6 w-full max-w-md shadow-2xl animate-fade-in">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <Edit className="w-5 h-5 text-nova-400" /> Edit Domain
+                            </h2>
+                            <button onClick={() => setEditDomain(null)} className="text-surface-200/40 hover:text-white transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="mb-4 p-3 rounded-lg bg-surface-900/50 border border-surface-700/30">
+                            <p className="text-sm font-medium text-white">{editDomain.name}</p>
+                            <p className="text-xs text-surface-200/50 mt-0.5">{editDomain.document_root}</p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-surface-200/60 mb-1.5">Web Server</label>
+                                <select value={editForm.web_server} onChange={e => setEditForm(f => ({ ...f, web_server: e.target.value }))}
+                                    className="w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white text-sm focus:outline-none focus:border-nova-500/50">
+                                    <option value="nginx">Nginx</option>
+                                    <option value="apache">Apache</option>
+                                    <option value="openlitespeed">OpenLiteSpeed</option>
+                                    <option value="caddy">Caddy</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-surface-200/60 mb-1.5">PHP Version</label>
+                                <select value={editForm.php_version} onChange={e => setEditForm(f => ({ ...f, php_version: e.target.value }))}
+                                    className="w-full px-4 py-2.5 bg-surface-900 border border-surface-700/50 rounded-lg text-white text-sm focus:outline-none focus:border-nova-500/50">
+                                    <option value="8.5">PHP 8.5</option>
+                                    <option value="8.4">PHP 8.4</option>
+                                    <option value="8.3">PHP 8.3</option>
+                                    <option value="8.2">PHP 8.2</option>
+                                    <option value="8.1">PHP 8.1</option>
+                                    <option value="8.0">PHP 8.0</option>
+                                    <option value="7.4">PHP 7.4</option>
+                                    <option value="">None (Static/Node/Python)</option>
+                                </select>
+                            </div>
+                            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-surface-700/50">
+                                <button onClick={() => setEditDomain(null)}
+                                    className="px-4 py-2.5 rounded-lg border border-surface-700/50 text-surface-200/60 hover:text-white hover:border-surface-700 transition-colors text-sm">
+                                    Cancel
+                                </button>
+                                <button onClick={handleEditSave} disabled={editSaving}
+                                    className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-nova-600 to-nova-700 text-white text-sm font-medium hover:from-nova-500 hover:to-nova-600 transition-all shadow-lg shadow-nova-500/20 disabled:opacity-50 flex items-center gap-2">
+                                    {editSaving ? <Loader className="w-4 h-4 animate-spin" /> : null}
+                                    {editSaving ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Add Domain Modal */}
             {showAddModal && (

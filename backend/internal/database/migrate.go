@@ -35,15 +35,16 @@ func RunMigrations(pool *pgxpool.Pool, migrationsDir string) error {
 
 	var upFiles []string
 	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name(), ".up.sql") {
-			upFiles = append(upFiles, entry.Name())
+		name := entry.Name()
+		if strings.HasSuffix(name, ".up.sql") || (strings.HasSuffix(name, ".sql") && !strings.HasSuffix(name, ".down.sql") && !strings.HasSuffix(name, ".up.sql")) {
+			upFiles = append(upFiles, name)
 		}
 	}
 	sort.Strings(upFiles)
 
 	applied := 0
 	for _, file := range upFiles {
-		version := strings.TrimSuffix(file, ".up.sql")
+		version := strings.TrimSuffix(strings.TrimSuffix(file, ".up.sql"), ".sql")
 
 		// Check if already applied
 		var exists bool

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ShieldCheck, Shield, Eye, Ban, Plus, Trash2, Loader, X, AlertTriangle, CheckCircle2, XCircle, ToggleLeft, ToggleRight, Settings2, FileWarning, ListFilter, Globe } from 'lucide-react';
 import { wafService } from '../services/waf';
+import { serverService } from '../services/servers';
 import { useToast } from '../components/ui/ToastProvider';
 
 interface WAFConfig {
@@ -22,11 +23,24 @@ const TABS: { id: Tab; label: string; icon: any }[] = [
     { id: 'logs', label: 'Audit Logs', icon: FileWarning },
 ];
 
+interface Server { id: string; name: string; ip_address: string; }
+
 export default function WAF() {
     const toast = useToast();
     const [tab, setTab] = useState<Tab>('config');
     const [loading, setLoading] = useState(false);
+    const [servers, setServers] = useState<Server[]>([]);
     const [serverId, setServerId] = useState('');
+
+    useEffect(() => {
+        serverService.list(1, 100)
+            .then(r => {
+                const list: Server[] = r.data || [];
+                setServers(list);
+                if (list.length > 0) setServerId(list[0].id);
+            })
+            .catch(() => { });
+    }, []);
 
     const [config, setConfig] = useState<WAFConfig | null>(null);
     const [rules, setRules] = useState<WAFRule[]>([]);
@@ -106,10 +120,21 @@ export default function WAF() {
 
             {/* Server Selector */}
             <div className="bg-surface-800/50 border border-surface-700/50 rounded-xl p-4 flex items-center gap-3">
-                <Globe className="w-5 h-5 text-surface-200/40" />
-                <input value={serverId} onChange={e => setServerId(e.target.value)} placeholder="Enter Server ID to manage WAF..."
-                    className={`${inputCls} flex-1`} onKeyDown={e => e.key === 'Enter' && fetchConfig()} />
-                <button onClick={fetchConfig} className={btnPrimary}>Load</button>
+                <Globe className="w-5 h-5 text-surface-200/40 flex-shrink-0" />
+                {servers.length === 0 ? (
+                    <p className="text-sm text-surface-200/50 flex-1">No servers available — add a server first</p>
+                ) : (
+                    <select
+                        value={serverId}
+                        onChange={e => setServerId(e.target.value)}
+                        className={`${inputCls} flex-1 bg-transparent`}>
+                        {servers.map(s => (
+                            <option key={s.id} value={s.id} className="bg-surface-800">
+                                {s.name} — {s.ip_address}
+                            </option>
+                        ))}
+                    </select>
+                )}
             </div>
 
             {serverId && (

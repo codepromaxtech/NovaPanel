@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,7 +13,13 @@ import (
 )
 
 var deployUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		return strings.Contains(origin, r.Host)
+	},
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 }

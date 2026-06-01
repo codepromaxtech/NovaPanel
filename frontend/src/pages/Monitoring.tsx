@@ -72,38 +72,39 @@ const typeIcons: Record<string, React.ElementType> = {
     app: Server,
 };
 
+interface ServerItem { id: string; name: string; ip_address: string; role: string; }
+
 export default function Monitoring() {
     const [metrics, setMetrics] = useState<Metrics | null>(null);
     const [services, setServices] = useState<ServiceStatus[]>([]);
+    const [servers, setServers] = useState<ServerItem[]>([]);
     const [serverId, setServerId] = useState('');
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const loadData = async (showRefresh = false) => {
+    // Load server list once
+    useEffect(() => {
+        serverService.list(1, 100).then(r => {
+            const list: ServerItem[] = r.data || [];
+            setServers(list);
+            if (list.length > 0) {
+                const master = list.find(s => s.role === 'master') || list[0];
+                setServerId(master.id);
+            }
+        }).catch(() => { });
+    }, []);
+
+    const loadData = async (sid: string, showRefresh = false) => {
+        if (!sid) return;
         if (showRefresh) setRefreshing(true);
         else setLoading(true);
-
         try {
-            // Get the first server (master)
-            let sid = serverId;
-            if (!sid) {
-                const serversResp = await serverService.list();
-                const servers = serversResp.data || [];
-                const master = servers.find((s: { role: string }) => s.role === 'master') || servers[0];
-                if (master) {
-                    sid = master.id;
-                    setServerId(sid);
-                }
-            }
-
-            if (sid) {
-                const [metricsData, servicesData] = await Promise.all([
-                    monitoringService.getLiveMetrics(sid),
-                    monitoringService.getServices(sid),
-                ]);
-                setMetrics(metricsData);
-                setServices(servicesData.services || []);
-            }
+            const [metricsData, servicesData] = await Promise.all([
+                monitoringService.getLiveMetrics(sid),
+                monitoringService.getServices(sid),
+            ]);
+            setMetrics(metricsData);
+            setServices(servicesData.services || []);
         } catch (err) {
             console.error('Failed to load monitoring data:', err);
         } finally {
@@ -113,10 +114,11 @@ export default function Monitoring() {
     };
 
     useEffect(() => {
-        loadData();
-        const interval = setInterval(() => loadData(true), 30000);
+        if (!serverId) return;
+        loadData(serverId);
+        const interval = setInterval(() => loadData(serverId, true), 30000);
         return () => clearInterval(interval);
-    }, []);
+    }, [serverId]);
 
     if (loading) {
         return (
@@ -142,11 +144,25 @@ export default function Monitoring() {
                         Real-time server resources & service health
                     </p>
                 </div>
-                <button onClick={() => loadData(true)} disabled={refreshing}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 text-white/60 text-sm font-medium hover:bg-white/10 transition-all">
-                    <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                    Refresh
-                </button>
+                <div className="flex items-center gap-3">
+                    {servers.length > 1 && (
+                        <select
+                            value={serverId}
+                            onChange={e => setServerId(e.target.value)}
+                            className="px-3 py-2 rounded-xl bg-surface-800/80 border border-surface-700/50 text-white text-sm focus:outline-none focus:border-nova-500/50">
+                            {servers.map(s => (
+                                <option key={s.id} value={s.id} className="bg-surface-800">
+                                    {s.name}
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                    <button onClick={() => loadData(serverId, true)} disabled={refreshing || !serverId}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 text-white/60 text-sm font-medium hover:bg-white/10 transition-all disabled:opacity-40">
+                        <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                        Refresh
+                    </button>
+                </div>
             </div>
 
             {/* Summary Strip */}

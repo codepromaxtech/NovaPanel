@@ -4,6 +4,8 @@ import {
     CheckCircle, Clock, ChevronDown,
 } from 'lucide-react';
 import { teamService, TeamMember, PendingInvite } from '../services/team';
+import { serverService } from '../services/servers';
+import { domainService } from '../services/domains';
 import { useToast } from '../components/ui/ToastProvider';
 
 const ROLES = ['viewer', 'developer', 'admin'];
@@ -36,6 +38,8 @@ export default function TeamManagement() {
     const [inviting, setInviting] = useState(false);
     const [removing, setRemoving] = useState<string | null>(null);
     const [accepting, setAccepting] = useState<string | null>(null);
+    const [scopeServers, setScopeServers] = useState<{ id: string; name: string }[]>([]);
+    const [scopeDomains, setScopeDomains] = useState<{ id: string; name: string }[]>([]);
 
     const load = async () => {
         setLoading(true);
@@ -51,7 +55,11 @@ export default function TeamManagement() {
         }
     };
 
-    useEffect(() => { load(); }, []);
+    useEffect(() => {
+        load();
+        serverService.list(1, 100).then(r => setScopeServers(r.data || [])).catch(() => {});
+        domainService.list(1, 100).then(r => setScopeDomains(r.data || [])).catch(() => {});
+    }, []);
 
     const handleInvite = async () => {
         if (!inviteForm.email) return;
@@ -276,7 +284,7 @@ export default function TeamManagement() {
                                 <div className="relative">
                                     <select
                                         value={inviteForm.scope_type}
-                                        onChange={e => setInviteForm(p => ({ ...p, scope_type: e.target.value }))}
+                                        onChange={e => setInviteForm(p => ({ ...p, scope_type: e.target.value, scope_id: '' }))}
                                         className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent appearance-none"
                                     >
                                         {SCOPE_TYPES.map(s => (
@@ -287,17 +295,40 @@ export default function TeamManagement() {
                                 </div>
                             </div>
 
-                            {inviteForm.scope_type !== 'all' && (
+                            {inviteForm.scope_type === 'server' && (
                                 <div>
-                                    <label className="block text-sm font-medium text-surface-200 mb-1.5">
-                                        {inviteForm.scope_type === 'server' ? 'Server' : 'Domain'} ID
-                                    </label>
-                                    <input
-                                        value={inviteForm.scope_id}
-                                        onChange={e => setInviteForm(p => ({ ...p, scope_id: e.target.value }))}
-                                        className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20 font-mono"
-                                        placeholder="UUID of the resource"
-                                    />
+                                    <label className="block text-sm font-medium text-surface-200 mb-1.5">Server</label>
+                                    <div className="relative">
+                                        <select
+                                            value={inviteForm.scope_id}
+                                            onChange={e => setInviteForm(p => ({ ...p, scope_id: e.target.value }))}
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent appearance-none"
+                                        >
+                                            <option value="" className="bg-surface-800">— Select server —</option>
+                                            {scopeServers.map(s => (
+                                                <option key={s.id} value={s.id} className="bg-surface-800">{s.name}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-200/40 pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
+                            {inviteForm.scope_type === 'domain' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-surface-200 mb-1.5">Domain</label>
+                                    <div className="relative">
+                                        <select
+                                            value={inviteForm.scope_id}
+                                            onChange={e => setInviteForm(p => ({ ...p, scope_id: e.target.value }))}
+                                            className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 bg-transparent appearance-none"
+                                        >
+                                            <option value="" className="bg-surface-800">— Select domain —</option>
+                                            {scopeDomains.map(d => (
+                                                <option key={d.id} value={d.id} className="bg-surface-800">{d.name}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-200/40 pointer-events-none" />
+                                    </div>
                                 </div>
                             )}
 

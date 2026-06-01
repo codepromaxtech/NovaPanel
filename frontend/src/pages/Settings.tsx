@@ -69,6 +69,19 @@ export default function Settings() {
     const [applyLog, setApplyLog] = useState<string[]>([]);
     const [updateWs, setUpdateWs] = useState<WebSocket | null>(null);
 
+    // Notification preferences
+    const [notifPrefs, setNotifPrefs] = useState<Record<string, boolean>>({
+        'Deployment alerts': true,
+        'Security warnings': true,
+        'Backup notifications': true,
+        'Billing reminders': false,
+        'Server health alerts': false,
+    });
+
+    const toggleNotif = (label: string) => {
+        setNotifPrefs(prev => ({ ...prev, [label]: !prev[label] }));
+    };
+
     useEffect(() => {
         settingsService.getProfile()
             .then(data => {
@@ -904,12 +917,17 @@ export default function Settings() {
                     ) : (
                         <div className="glass-card rounded-2xl p-6 space-y-6">
                             <h3 className="text-lg font-bold text-white">Notification Preferences</h3>
-                            <div className="space-y-4">
-                                {['Deployment alerts', 'Security warnings', 'Backup notifications', 'Billing reminders', 'Server health alerts'].map((label, i) => (
-                                    <div key={i} className="flex items-center justify-between py-2">
+                            <div className="space-y-2">
+                                {Object.entries(notifPrefs).map(([label, enabled]) => (
+                                    <div key={label} className="flex items-center justify-between p-3 rounded-xl hover:bg-surface-700/20 transition-colors">
                                         <span className="text-sm text-surface-200/70">{label}</span>
-                                        <button className={`w-11 h-6 rounded-full transition-colors relative ${i < 3 ? 'bg-nova-500' : 'bg-surface-700'}`}>
-                                            <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${i < 3 ? 'left-6' : 'left-1'}`} />
+                                        <button
+                                            onClick={() => toggleNotif(label)}
+                                            className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${enabled ? 'bg-nova-500' : 'bg-surface-700'}`}
+                                            role="switch"
+                                            aria-checked={enabled}
+                                            aria-label={label}>
+                                            <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all duration-200 ${enabled ? 'left-6' : 'left-1'}`} />
                                         </button>
                                     </div>
                                 ))}

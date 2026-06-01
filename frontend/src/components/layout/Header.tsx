@@ -105,12 +105,14 @@ export default function Header() {
                                 <p className="text-sm text-white font-medium truncate">{user?.email || 'admin@novapanel.io'}</p>
                                 <p className="text-xs text-surface-200/40 capitalize">{user?.role}</p>
                             </div>
-                            <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-surface-200/70 hover:bg-surface-700/50 hover:text-white transition-colors">
+                            <button
+                                onClick={() => { setShowUserMenu(false); navigate('/settings'); }}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-surface-200/70 hover:bg-surface-700/50 hover:text-white transition-colors">
                                 <User className="w-4 h-4" />
                                 Profile Settings
                             </button>
                             <button
-                                onClick={clearAuth}
+                                onClick={() => { clearAuth(); navigate('/login'); }}
                                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-danger hover:bg-danger/10 transition-colors"
                             >
                                 <LogOut className="w-4 h-4" />

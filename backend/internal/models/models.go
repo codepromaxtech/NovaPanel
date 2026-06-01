@@ -463,6 +463,7 @@ type AlertRule struct {
 type AlertIncident struct {
 	ID         uuid.UUID  `json:"id"`
 	RuleID     uuid.UUID  `json:"rule_id"`
+	RuleName   string     `json:"rule_name"`
 	FiredAt    time.Time  `json:"fired_at"`
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 	Value      float64    `json:"value"`

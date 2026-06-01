@@ -2,8 +2,10 @@ package websocket
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -14,7 +16,13 @@ var upgrader = ws.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // TODO: Restrict origins in production
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // non-browser clients (curl, CLI) have no Origin
+		}
+		// Allow same host
+		host := r.Host
+		return strings.Contains(origin, host)
 	},
 }
 
@@ -93,7 +101,7 @@ func (h *Hub) BroadcastEvent(eventType string, payload interface{}) {
 
 // HandleWebSocket upgrades HTTP to WebSocket connection
 func (h *Hub) HandleWebSocket(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDRaw, _ := c.Get("user_id")
 	role, _ := c.Get("role")
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -102,10 +110,13 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
+	userIDStr := fmt.Sprintf("%v", userIDRaw)
+	roleStr, _ := role.(string)
+
 	client := &Client{
 		conn:   conn,
-		userID: userID.(string),
-		role:   role.(string),
+		userID: userIDStr,
+		role:   roleStr,
 		send:   make(chan []byte, 256),
 	}
 

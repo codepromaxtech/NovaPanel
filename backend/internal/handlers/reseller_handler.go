@@ -82,6 +82,21 @@ func (h *ResellerHandler) DeleteClient(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Client removed"})
 }
 
+// POST /api/v1/reseller/clients/:id/suspend
+func (h *ResellerHandler) SuspendClient(c *gin.Context) {
+	resellerID := c.MustGet("user_id").(uuid.UUID)
+	clientID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid client id"})
+		return
+	}
+	if err := h.service.SuspendClient(c.Request.Context(), resellerID, clientID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Client suspended"})
+}
+
 // GET /api/v1/reseller/clients/:id/usage
 func (h *ResellerHandler) GetClientUsage(c *gin.Context) {
 	resellerID := c.MustGet("user_id").(uuid.UUID)

@@ -20,7 +20,11 @@ var termUpgrader = ws.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		return strings.Contains(origin, r.Host)
 	},
 }
 

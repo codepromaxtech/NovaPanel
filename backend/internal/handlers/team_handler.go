@@ -9,6 +9,16 @@ import (
 	"github.com/novapanel/novapanel/internal/services"
 )
 
+// userIDFromCtx retrieves the uuid.UUID stored by AuthMiddleware.
+func userIDFromCtx(c *gin.Context) (uuid.UUID, bool) {
+	v, ok := c.Get("user_id")
+	if !ok {
+		return uuid.UUID{}, false
+	}
+	id, ok := v.(uuid.UUID)
+	return id, ok
+}
+
 type TeamHandler struct {
 	service *services.TeamService
 }
@@ -25,9 +35,8 @@ func (h *TeamHandler) Invite(c *gin.Context) {
 		return
 	}
 
-	ownerID, _ := c.Get("user_id")
-	uid, err := uuid.Parse(ownerID.(string))
-	if err != nil {
+	uid, ok := userIDFromCtx(c)
+	if !ok {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid user ID"})
 		return
 	}
@@ -43,9 +52,8 @@ func (h *TeamHandler) Invite(c *gin.Context) {
 // POST /api/v1/team/accept/:id
 func (h *TeamHandler) Accept(c *gin.Context) {
 	inviteID := c.Param("id")
-	memberIDStr, _ := c.Get("user_id")
-	memberID, err := uuid.Parse(memberIDStr.(string))
-	if err != nil {
+	memberID, ok := userIDFromCtx(c)
+	if !ok {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid user ID"})
 		return
 	}
@@ -59,9 +67,8 @@ func (h *TeamHandler) Accept(c *gin.Context) {
 
 // GET /api/v1/team/members
 func (h *TeamHandler) ListMembers(c *gin.Context) {
-	ownerIDStr, _ := c.Get("user_id")
-	ownerID, err := uuid.Parse(ownerIDStr.(string))
-	if err != nil {
+	ownerID, ok := userIDFromCtx(c)
+	if !ok {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid user ID"})
 		return
 	}
@@ -76,9 +83,8 @@ func (h *TeamHandler) ListMembers(c *gin.Context) {
 
 // GET /api/v1/team/invites
 func (h *TeamHandler) ListInvites(c *gin.Context) {
-	memberIDStr, _ := c.Get("user_id")
-	memberID, err := uuid.Parse(memberIDStr.(string))
-	if err != nil {
+	memberID, ok := userIDFromCtx(c)
+	if !ok {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid user ID"})
 		return
 	}
@@ -94,9 +100,8 @@ func (h *TeamHandler) ListInvites(c *gin.Context) {
 // DELETE /api/v1/team/members/:id
 func (h *TeamHandler) Remove(c *gin.Context) {
 	memberRecordID := c.Param("id")
-	ownerIDStr, _ := c.Get("user_id")
-	ownerID, err := uuid.Parse(ownerIDStr.(string))
-	if err != nil {
+	ownerID, ok := userIDFromCtx(c)
+	if !ok {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Invalid user ID"})
 		return
 	}

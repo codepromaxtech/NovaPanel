@@ -769,6 +769,7 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 				reseller.POST("/clients", resellerHandler.AllocateClient)
 				reseller.GET("/clients", resellerHandler.ListClients)
 				reseller.PUT("/clients/:id", resellerHandler.UpdateClientQuota)
+				reseller.POST("/clients/:id/suspend", resellerHandler.SuspendClient)
 				reseller.DELETE("/clients/:id", resellerHandler.DeleteClient)
 				reseller.GET("/clients/:id/usage", resellerHandler.GetClientUsage)
 			}

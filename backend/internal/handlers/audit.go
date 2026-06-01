@@ -12,6 +12,20 @@ import (
 	"github.com/novapanel/novapanel/internal/models"
 )
 
+// extractNameFromDetails pulls the "name" key out of a JSON details blob.
+func extractNameFromDetails(detailsJSON string) string {
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(detailsJSON), &m); err != nil {
+		return ""
+	}
+	if v, ok := m["name"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 // writeAudit inserts a row into audit_logs. Errors are silently ignored.
 func writeAudit(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, action, resource, resourceID, ipAddress string, details map[string]interface{}) {
 	detailsJSON, _ := json.Marshal(details)
@@ -66,7 +80,23 @@ func (h *AuditHandler) List(c *gin.Context) {
 			&e.ResourceID, &e.IPAddress, &e.Details, &e.CreatedAt); err != nil {
 			continue
 		}
-		e.ResourceName = e.ResourceID
+		if name := extractNameFromDetails(e.Details); name != "" {
+			e.ResourceName = name
+		} else {
+			e.ResourceName = e.ResourceID
+		}
+		// Build dot-notation action: "domain.created", "application.deleted", etc.
+		pastTense := map[string]string{
+			"create": "created", "delete": "deleted", "update": "updated",
+			"deploy": "deployed", "restart": "restarted", "issue": "issued",
+		}
+		verb := pastTense[e.Action]
+		if verb == "" {
+			verb = e.Action
+		}
+		if e.ResourceType != "" {
+			e.Action = e.ResourceType + "." + verb
+		}
 		logs = append(logs, e)
 	}
 

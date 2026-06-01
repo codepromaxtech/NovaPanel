@@ -3,6 +3,7 @@ import { useModalLock } from '../hooks/useModalLock';
 import { Mail, Plus, Trash2, Search, Loader, X, ArrowRightLeft, AtSign, MessageSquareReply, Shield, Inbox, Globe, Send, ToggleLeft, ToggleRight, Lock, HardDrive, Copy, CheckCircle2, XCircle, ExternalLink, StopCircle } from 'lucide-react';
 import { emailService } from '../services/emails';
 import { serverService } from '../services/servers';
+import { domainService } from '../services/domains';
 import { useToast } from '../components/ui/ToastProvider';
 
 interface EmailAccount { id: string; address: string; quota_mb: number; used_mb: number; is_active: boolean; created_at: string; domain_id: string; }
@@ -63,11 +64,18 @@ export default function Email() {
     const [catchAllDomainId, setCatchAllDomainId] = useState('');
     const [catchAllAddr, setCatchAllAddr] = useState('');
 
+    // ──── Domains (for dropdowns) ────
+    const [domains, setDomains] = useState<{ id: string; name: string }[]>([]);
+
     // ──── Webmail ────
     const [wmServers, setWmServers] = useState<{id: string; name: string; ip_address: string}[]>([]);
     const [wmServer, setWmServer] = useState('');
     const [wmStatus, setWmStatus] = useState<{status: string; url?: string; tool?: string} | null>(null);
     const [wmLoading, setWmLoading] = useState(false);
+
+    useEffect(() => {
+        domainService.list(1, 100).then(r => setDomains(r.data || [])).catch(() => {});
+    }, []);
 
     const fetchAccounts = async () => {
         setLoading(true);
@@ -391,7 +399,10 @@ export default function Email() {
                     <h3 className="text-lg font-semibold text-white mb-1">Catch-All Address</h3>
                     <p className="text-sm text-surface-200/40 mb-4">All emails sent to undefined addresses on this domain will be forwarded to the catch-all address.</p>
                     <div className="space-y-3">
-                        <input value={catchAllDomainId} onChange={e => setCatchAllDomainId(e.target.value)} placeholder="Domain ID" className={inputCls} />
+                        <select value={catchAllDomainId} onChange={e => setCatchAllDomainId(e.target.value)} className={inputCls + " bg-transparent"}>
+                            <option value="">Select domain</option>
+                            {domains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
                         <input value={catchAllAddr} onChange={e => setCatchAllAddr(e.target.value)} placeholder="catch-all@example.com (leave empty to disable)" className={inputCls} />
                         <button onClick={handleSaveCatchAll} className={btnPrimary}>Save</button>
                     </div>
@@ -479,7 +490,10 @@ export default function Email() {
                     <div className="bg-surface-800 border border-surface-700/50 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold text-white mb-4">Create Email Account</h2>
                         <div className="space-y-3">
-                            <input value={newAcct.domain_id} onChange={e => setNewAcct({ ...newAcct, domain_id: e.target.value })} placeholder="Domain ID" className={inputCls} />
+                            <select value={newAcct.domain_id} onChange={e => setNewAcct({ ...newAcct, domain_id: e.target.value })} className={inputCls + " bg-transparent"}>
+                                <option value="">Select domain</option>
+                                {domains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </select>
                             <input value={newAcct.address} onChange={e => setNewAcct({ ...newAcct, address: e.target.value })} placeholder="user@example.com" className={inputCls} />
                             <input type="password" value={newAcct.password} onChange={e => setNewAcct({ ...newAcct, password: e.target.value })} placeholder="Password (min 8 chars)" className={inputCls} />
                             <input type="number" value={newAcct.quota_mb} onChange={e => setNewAcct({ ...newAcct, quota_mb: parseInt(e.target.value) || 1024 })} placeholder="Quota (MB)" className={inputCls} />
@@ -527,7 +541,10 @@ export default function Email() {
                     <div className="bg-surface-800 border border-surface-700/50 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold text-white mb-4">Create Forwarder</h2>
                         <div className="space-y-3">
-                            <input value={newFwd.domain_id} onChange={e => setNewFwd({ ...newFwd, domain_id: e.target.value })} placeholder="Domain ID" className={inputCls} />
+                            <select value={newFwd.domain_id} onChange={e => setNewFwd({ ...newFwd, domain_id: e.target.value })} className={inputCls + " bg-transparent"}>
+                                <option value="">Select domain</option>
+                                {domains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </select>
                             <input value={newFwd.source} onChange={e => setNewFwd({ ...newFwd, source: e.target.value })} placeholder="Source: user@example.com" className={inputCls} />
                             <input value={newFwd.destination} onChange={e => setNewFwd({ ...newFwd, destination: e.target.value })} placeholder="Forward to: other@example.com" className={inputCls} />
                         </div>
@@ -545,7 +562,10 @@ export default function Email() {
                     <div className="bg-surface-800 border border-surface-700/50 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-bold text-white mb-4">Create Alias</h2>
                         <div className="space-y-3">
-                            <input value={newAlias.domain_id} onChange={e => setNewAlias({ ...newAlias, domain_id: e.target.value })} placeholder="Domain ID" className={inputCls} />
+                            <select value={newAlias.domain_id} onChange={e => setNewAlias({ ...newAlias, domain_id: e.target.value })} className={inputCls + " bg-transparent"}>
+                                <option value="">Select domain</option>
+                                {domains.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </select>
                             <input value={newAlias.source} onChange={e => setNewAlias({ ...newAlias, source: e.target.value })} placeholder="Alias: alias@example.com" className={inputCls} />
                             <input value={newAlias.destination} onChange={e => setNewAlias({ ...newAlias, destination: e.target.value })} placeholder="Deliver to: real@example.com" className={inputCls} />
                         </div>

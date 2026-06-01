@@ -42,7 +42,7 @@ export const resellerService = {
         return data;
     },
     async suspendClient(clientId: string) {
-        const { data } = await api.delete(`/reseller/clients/${clientId}`);
+        const { data } = await api.post(`/reseller/clients/${clientId}/suspend`);
         return data;
     },
     async getClientUsage(clientId: string) {

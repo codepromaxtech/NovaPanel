@@ -104,7 +104,7 @@ func (s *AlertService) DeleteRule(ctx context.Context, id string, userID uuid.UU
 
 func (s *AlertService) ListIncidents(ctx context.Context, userID uuid.UUID, role string) ([]models.AlertIncident, error) {
 	var args []interface{}
-	query := `SELECT ai.id, ai.rule_id, ai.fired_at, ai.resolved_at, ai.value, ai.notified
+	query := `SELECT ai.id, ai.rule_id, ar.name, ai.fired_at, ai.resolved_at, ai.value, ai.notified
 	          FROM alert_incidents ai
 	          JOIN alert_rules ar ON ar.id = ai.rule_id`
 	if role != "admin" {
@@ -122,7 +122,7 @@ func (s *AlertService) ListIncidents(ctx context.Context, userID uuid.UUID, role
 	var incidents []models.AlertIncident
 	for rows.Next() {
 		var i models.AlertIncident
-		if err := rows.Scan(&i.ID, &i.RuleID, &i.FiredAt, &i.ResolvedAt, &i.Value, &i.Notified); err != nil {
+		if err := rows.Scan(&i.ID, &i.RuleID, &i.RuleName, &i.FiredAt, &i.ResolvedAt, &i.Value, &i.Notified); err != nil {
 			continue
 		}
 		incidents = append(incidents, i)
@@ -164,17 +164,17 @@ func (s *AlertService) EvaluateRules(ctx context.Context) {
 
 		var value float64
 		switch metric {
-		case "cpu":
+		case "cpu_usage", "cpu":
 			value = cpu
-		case "memory":
+		case "memory_usage", "memory":
 			if ramTotal > 0 {
 				value = (ramUsed / ramTotal) * 100
 			}
-		case "disk":
+		case "disk_usage", "disk":
 			if diskTotal > 0 {
 				value = (diskUsed / diskTotal) * 100
 			}
-		case "load":
+		case "load_average", "load":
 			value = load
 		default:
 			continue
