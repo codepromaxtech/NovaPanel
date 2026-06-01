@@ -71,6 +71,16 @@ server {
 
     {% if php_version and not is_load_balancer and not proxy_pass %}
 
+    location ~ \\.php$ {
+        try_files $uri =404;
+        fastcgi_split_path_info ^(.+\\.php)(/.+)$;
+        fastcgi_pass unix:/run/php/php{{ php_version }}-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+    }
+
     # Deny access to hidden files
     location ~ /\\. {
         deny all;
@@ -137,6 +147,16 @@ server {
     {% endif %}
 
     {% if php_version and not is_load_balancer and not proxy_pass %}
+
+    location ~ \\.php$ {
+        try_files $uri =404;
+        fastcgi_split_path_info ^(.+\\.php)(/.+)$;
+        fastcgi_pass unix:/run/php/php{{ php_version }}-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+    }
 
     location ~ /\\. {
         deny all;

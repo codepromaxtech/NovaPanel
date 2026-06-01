@@ -1,8 +1,13 @@
 import asyncio
 import os
+import re
 import glob
 from datetime import datetime
 from pathlib import Path
+
+
+# Allow only safe path characters — no shell metacharacters
+_PATH_SAFE_RE = re.compile(r'^[a-zA-Z0-9/_.\-]+$')
 
 
 class BackupOpsService:
@@ -10,31 +15,41 @@ class BackupOpsService:
 
     BACKUP_DIR = "/var/backups/novapanel"
 
-    async def _run(self, cmd: str) -> str:
-        proc = await asyncio.create_subprocess_shell(
-            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    async def _run(self, args: list) -> str:
+        proc = await asyncio.create_subprocess_exec(
+            *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
             raise Exception(f"Backup command failed: {stderr.decode()}")
         return stdout.decode()
 
+    def _validate_path(self, path: str) -> str:
+        """Reject paths containing directory traversal or unsafe characters."""
+        if ".." in path or not _PATH_SAFE_RE.match(path):
+            raise ValueError(f"Invalid path: {path}")
+        return path
+
     async def create_backup(
         self, source_path: str, backup_type: str = "full",
         storage: str = "local", s3_destination: str = None
     ) -> dict:
+        self._validate_path(source_path)
         Path(self.BACKUP_DIR).mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         archive_name = f"backup_{timestamp}.tar.gz"
         archive_path = os.path.join(self.BACKUP_DIR, archive_name)
 
+        clean_source = source_path.lstrip('/')
         if backup_type == "full":
-            await self._run(f"tar -czf {archive_path} -C / {source_path.lstrip('/')}")
+            await self._run(["tar", "-czf", archive_path, "-C", "/", clean_source])
         elif backup_type == "incremental":
             snapshot_file = os.path.join(self.BACKUP_DIR, "snapshot.snar")
-            await self._run(
-                f"tar -czf {archive_path} --listed-incremental={snapshot_file} -C / {source_path.lstrip('/')}"
-            )
+            await self._run([
+                "tar", "-czf", archive_path,
+                f"--listed-incremental={snapshot_file}",
+                "-C", "/", clean_source,
+            ])
 
         size_mb = os.path.getsize(archive_path) / (1024 * 1024) if os.path.exists(archive_path) else 0
 
@@ -47,14 +62,17 @@ class BackupOpsService:
         }
 
         if storage == "s3" and s3_destination:
-            await self._run(f"aws s3 cp {archive_path} {s3_destination}/{archive_name}")
+            self._validate_path(s3_destination)
+            await self._run(["aws", "s3", "cp", archive_path, f"{s3_destination}/{archive_name}"])
             result["s3_path"] = f"{s3_destination}/{archive_name}"
 
         return result
 
     async def restore(self, archive_path: str, restore_to: str) -> dict:
+        self._validate_path(archive_path)
+        self._validate_path(restore_to)
         Path(restore_to).mkdir(parents=True, exist_ok=True)
-        await self._run(f"tar -xzf {archive_path} -C {restore_to}")
+        await self._run(["tar", "-xzf", archive_path, "-C", restore_to])
         return {"status": "success", "message": f"Restored {archive_path} to {restore_to}"}
 
     async def list_backups(self, storage: str = "local") -> dict:

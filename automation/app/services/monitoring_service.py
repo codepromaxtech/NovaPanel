@@ -1,6 +1,10 @@
 import asyncio
+import re
 import psutil
 from datetime import datetime
+
+
+_SERVICE_NAME_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-\.]{0,63}$')
 
 
 class MonitoringOpsService:
@@ -65,8 +69,8 @@ class MonitoringOpsService:
 
         for svc in services:
             try:
-                proc = await asyncio.create_subprocess_shell(
-                    f"systemctl is-active {svc}",
+                proc = await asyncio.create_subprocess_exec(
+                    "systemctl", "is-active", svc,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -81,9 +85,11 @@ class MonitoringOpsService:
     async def control_service(self, service_name: str, action: str) -> dict:
         if action not in ("start", "stop", "restart", "reload"):
             raise ValueError(f"Invalid action: {action}")
+        if not _SERVICE_NAME_RE.match(service_name):
+            raise ValueError(f"Invalid service name: {service_name}")
 
-        proc = await asyncio.create_subprocess_shell(
-            f"systemctl {action} {service_name}",
+        proc = await asyncio.create_subprocess_exec(
+            "systemctl", action, service_name,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

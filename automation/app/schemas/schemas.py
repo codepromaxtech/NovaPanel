@@ -18,6 +18,7 @@ class PHPVersion(str, Enum):
     PHP81 = "8.1"
     PHP82 = "8.2"
     PHP83 = "8.3"
+    PHP84 = "8.4"
 
 
 # --- Nginx schemas ---
@@ -96,6 +97,7 @@ class DeployMethod(str, Enum):
 class DeployRequest(BaseModel):
     app_name: str
     domain: str
+    server_id: Optional[str] = Field(default=None, description="Target server ID")
     deploy_method: DeployMethod
     git_repo: Optional[str] = None
     git_branch: str = Field(default="main")
