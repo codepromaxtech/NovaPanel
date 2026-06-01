@@ -1,7 +1,7 @@
 # NovaPanel
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.0.7-blue?logo=github" />
+  <img src="https://img.shields.io/badge/version-v1.0.9-blue?logo=github" />
   <img src="https://img.shields.io/docker/v/codepromax24/novapanel-api?label=Docker%20Hub&logo=docker&color=0db7ed" />
   <img src="https://img.shields.io/docker/pulls/codepromax24/novapanel-api?color=0db7ed&logo=docker" />
   <img src="https://img.shields.io/github/actions/workflow/status/codepromaxtech/novapanel/docker-publish.yml?label=CI&logo=github" />
@@ -196,6 +196,12 @@ NovaPanel is designed with security in mind:
 ---
 
 ## Changelog
+
+### v1.0.9
+- Fix modal/popup windows appearing behind the header — remove `animate-fade-in` from `<main>` in MainLayout to eliminate CSS stacking context that trapped fixed-position modals below the sticky header
+
+### v1.0.8
+- SSH connection pool, soft-delete apps, multi-server deploy fan-out (Sprint 5)
 
 ### v1.0.7
 - Dark theme audit: fix all select/dropdown native rendering via `color-scheme: dark`; remove `bg-transparent` overrides on glassmorphism inputs; fix table header contrast; bump placeholder opacity

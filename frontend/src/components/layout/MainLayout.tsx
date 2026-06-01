@@ -17,7 +17,7 @@ export default function MainLayout() {
                 style={{ marginLeft: sidebarCollapsed ? '68px' : '250px' }}
             >
                 <Header />
-                <main className="flex-1 p-6 animate-fade-in">
+                <main className="flex-1 p-6">
                     <Outlet />
                 </main>
             </div>
