@@ -240,8 +240,11 @@ type UpdateAppRequest struct {
 }
 
 type CreateDeploymentRequest struct {
-	AppID  string `json:"app_id" binding:"required"`
-	Branch string `json:"branch"`
+	AppID           string   `json:"app_id" binding:"required"`
+	Branch          string   `json:"branch"`
+	// TargetServerIDs is optional. When set with 2+ entries, the deployment
+	// fans out in parallel to each server. Requires allow_multi_deploy plan feature.
+	TargetServerIDs []string `json:"target_server_ids"`
 }
 
 type CreateFirewallRuleRequest struct {

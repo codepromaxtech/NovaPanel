@@ -10,12 +10,17 @@ import (
 	"github.com/novapanel/novapanel/internal/services"
 )
 
-type DeployHandler struct {
-	service *services.DeployService
+type deployLicenseChecker interface {
+	GetStatus() services.LicenseStatus
 }
 
-func NewDeployHandler(service *services.DeployService) *DeployHandler {
-	return &DeployHandler{service: service}
+type DeployHandler struct {
+	service *services.DeployService
+	license deployLicenseChecker
+}
+
+func NewDeployHandler(service *services.DeployService, license deployLicenseChecker) *DeployHandler {
+	return &DeployHandler{service: service, license: license}
 }
 
 // POST /api/v1/deployments — Create AND trigger a deployment
@@ -25,6 +30,23 @@ func (h *DeployHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	// Multi-server fan-out requires enterprise licence.
+	if len(req.TargetServerIDs) > 1 {
+		role, _ := c.Get("user_role")
+		if role != "admin" && h.license != nil {
+			st := h.license.GetStatus()
+			if !st.Features.AllowMultiDeploy {
+				c.JSON(http.StatusPaymentRequired, gin.H{
+					"error":   "upgrade_required",
+					"feature": "allow_multi_deploy",
+					"message": "Multi-server deployment requires an Enterprise plan.",
+				})
+				return
+			}
+		}
+	}
+
 	userID := c.MustGet("user_id").(uuid.UUID)
 	d, err := h.service.TriggerDeploy(c.Request.Context(), userID, req)
 	if err != nil {
@@ -76,4 +98,14 @@ func (h *DeployHandler) GetLogs(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"logs": logs, "status": status})
+}
+
+// GET /api/v1/deployments/:id/targets — per-server results for multi-server deploys
+func (h *DeployHandler) ListTargets(c *gin.Context) {
+	targets, err := h.service.ListTargets(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"targets": targets})
 }

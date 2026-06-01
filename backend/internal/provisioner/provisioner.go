@@ -196,54 +196,7 @@ func RunScriptLocally(script string) (string, error) {
 }
 
 func runSSH(server ServerInfo, script string, useSudo bool) (string, error) {
-	config, err := buildSSHConfig(server)
-	if err != nil {
-		return "", fmt.Errorf("ssh config error: %w", err)
-	}
-
-	addr := fmt.Sprintf("%s:%d", server.IPAddress, server.Port)
-	conn, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		return "", fmt.Errorf("ssh dial error to %s: %w", addr, err)
-	}
-	defer conn.Close()
-
-	session, err := conn.NewSession()
-	if err != nil {
-		return "", fmt.Errorf("ssh session error: %w", err)
-	}
-	defer session.Close()
-
-	var stdout, stderr bytes.Buffer
-	session.Stdout = &stdout
-	session.Stderr = &stderr
-
-	// Build the inner script with error handling
-	innerScript := fmt.Sprintf("set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s", script)
-
-	var wrappedScript string
-	if useSudo {
-		// Escape single quotes in the script to safely embed in bash -c '...'
-		escapedScript := strings.ReplaceAll(innerScript, "'", "'\"'\"'")
-
-		if server.SSHPassword != "" {
-			// Use sudo -S to read password from stdin (pipe it via echo)
-			// Escape single quotes in password too
-			escapedPass := strings.ReplaceAll(server.SSHPassword, "'", "'\"'\"'")
-			wrappedScript = fmt.Sprintf("echo '%s' | sudo -S bash -c '%s'", escapedPass, escapedScript)
-		} else {
-			// No password available — try passwordless sudo (NOPASSWD in sudoers)
-			wrappedScript = fmt.Sprintf("sudo -n bash -c '%s'", escapedScript)
-		}
-	} else {
-		wrappedScript = innerScript
-	}
-
-	if err := session.Run(wrappedScript); err != nil {
-		return stderr.String() + "\n" + stdout.String(), fmt.Errorf("script failed: %w\nstderr: %s", err, stderr.String())
-	}
-
-	return stdout.String(), nil
+	return runSSHPooled(server, script, useSudo)
 }
 
 // ProvisionServer runs all module install scripts for a server

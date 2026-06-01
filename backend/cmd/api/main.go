@@ -254,7 +254,6 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 	backupHandler := handlers.NewBackupHandler(backupService)
 	fileManagerSvc := services.NewFileManagerService(pool)
 	fileManagerHandler := handlers.NewFileManagerHandler(fileManagerSvc)
-	deployHandler := handlers.NewDeployHandler(deployService)
 	deployWSHandler := handlers.NewDeployWSHandler(deployService)
 	appHandler := handlers.NewAppHandler(appService, pool)
 	securityHandler := handlers.NewSecurityHandler(securityService)
@@ -377,6 +376,7 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 	licenseSvc := services.NewLicenseService(pool, cfg)
 	licenseSvc.RunBackgroundChecker(context.Background())
 	licenseHandler := handlers.NewLicenseHandler(licenseSvc)
+	deployHandler := handlers.NewDeployHandler(deployService, licenseSvc)
 
 	// Set up Gin router
 	if cfg.Env == "production" {
@@ -710,6 +710,7 @@ echo "LB_CONFIGURED"`, confPath, confContent, confPath, enabledPath)
 				deploys.POST("/:id/redeploy", deployHandler.Redeploy)
 				deploys.GET("/:id/logs", deployHandler.GetLogs)
 				deploys.GET("/:id/ws", deployWSHandler.HandleDeployLogs)
+				deploys.GET("/:id/targets", deployHandler.ListTargets)
 			}
 
 			// Phase 3: Security

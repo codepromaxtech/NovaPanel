@@ -78,11 +78,11 @@ func (s *AppService) List(ctx context.Context, userID uuid.UUID, role string, pa
 	offset := (page - 1) * perPage
 	var total int64
 
-	baseWhere := ""
+	baseWhere := " WHERE deleted_at IS NULL"
 	var args []interface{}
 	if role != "admin" {
 		args = append(args, userID)
-		baseWhere = " WHERE user_id = $1"
+		baseWhere = " WHERE deleted_at IS NULL AND user_id = $1"
 	}
 
 	s.pool.QueryRow(ctx, "SELECT count(*) FROM applications"+baseWhere, args...).Scan(&total)
@@ -121,7 +121,7 @@ func (s *AppService) GetByID(ctx context.Context, id string) (*models.Applicatio
 		`SELECT id, user_id, domain_id, server_id, name, app_type, runtime, deploy_method,
 		        COALESCE(git_repo,''), COALESCE(git_branch,'main'), status,
 		        COALESCE(env_vars::text,'{}'), env_vars_enc, created_at, updated_at
-		 FROM applications WHERE id = $1`, id,
+		 FROM applications WHERE id = $1 AND deleted_at IS NULL`, id,
 	).Scan(&app.ID, &app.UserID, &app.DomainID, &app.ServerID, &app.Name, &app.AppType,
 		&app.Runtime, &app.DeployMethod, &app.GitRepo, &app.GitBranch, &app.Status,
 		&envVarsJSON, &envVarsEnc, &app.CreatedAt, &app.UpdatedAt)
@@ -154,7 +154,7 @@ func (s *AppService) GetByIDWithPlainEnv(ctx context.Context, id string) (*model
 	var envVarsJSON []byte
 	var envVarsEnc *string
 	s.pool.QueryRow(ctx,
-		`SELECT COALESCE(env_vars::text,'{}'), env_vars_enc FROM applications WHERE id = $1`, id,
+		`SELECT COALESCE(env_vars::text,'{}'), env_vars_enc FROM applications WHERE id = $1 AND deleted_at IS NULL`, id,
 	).Scan(&envVarsJSON, &envVarsEnc)
 	if envVarsEnc != nil && *envVarsEnc != "" {
 		if plain, err := novacrypto.Decrypt(*envVarsEnc, s.cryptoKey); err == nil {
@@ -278,7 +278,8 @@ func (s *AppService) Delete(ctx context.Context, id string, userID uuid.UUID, ro
 	if role != "admin" && app.UserID != userID {
 		return fmt.Errorf("application not found")
 	}
-	result, err := s.pool.Exec(ctx, "DELETE FROM applications WHERE id = $1", id)
+	result, err := s.pool.Exec(ctx,
+		"UPDATE applications SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL", id)
 	if err != nil {
 		return err
 	}

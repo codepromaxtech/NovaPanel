@@ -86,6 +86,7 @@ type Application struct {
 	Status        string            `json:"status" db:"status"`
 	WebhookSecret string            `json:"webhook_secret,omitempty" db:"webhook_secret"`
 	EnvVars       map[string]string `json:"env_vars,omitempty"`
+	DeletedAt     *time.Time        `json:"deleted_at,omitempty" db:"deleted_at"`
 	CreatedAt     time.Time         `json:"created_at" db:"created_at"`
 	UpdatedAt     time.Time         `json:"updated_at" db:"updated_at"`
 }
@@ -236,6 +237,7 @@ type Deployment struct {
 	ID          uuid.UUID  `json:"id" db:"id"`
 	AppID       uuid.UUID  `json:"app_id" db:"app_id"`
 	UserID      uuid.UUID  `json:"user_id" db:"user_id"`
+	ServerID    *uuid.UUID `json:"server_id,omitempty" db:"server_id"`
 	CommitHash  string     `json:"commit_hash" db:"commit_hash"`
 	Branch      string     `json:"branch" db:"branch"`
 	Status      string     `json:"status" db:"status"`
@@ -243,6 +245,20 @@ type Deployment struct {
 	StartedAt   *time.Time `json:"started_at,omitempty" db:"started_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty" db:"completed_at"`
 	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+	// Populated when multi-server fan-out was used.
+	Targets []DeploymentTarget `json:"targets,omitempty" db:"-"`
+}
+
+type DeploymentTarget struct {
+	ID           uuid.UUID  `json:"id" db:"id"`
+	DeploymentID uuid.UUID  `json:"deployment_id" db:"deployment_id"`
+	ServerID     uuid.UUID  `json:"server_id" db:"server_id"`
+	Status       string     `json:"status" db:"status"`
+	BuildLog     string     `json:"build_log,omitempty" db:"build_log"`
+	CommitHash   string     `json:"commit_hash,omitempty" db:"commit_hash"`
+	StartedAt    *time.Time `json:"started_at,omitempty" db:"started_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty" db:"completed_at"`
+	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 }
 
 type FirewallRule struct {

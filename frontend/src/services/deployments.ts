@@ -5,7 +5,7 @@ export const deployService = {
         const { data } = await api.get('/deployments', { params: { page, per_page: perPage } });
         return data;
     },
-    async create(payload: { app_id: string; branch?: string }) {
+    async create(payload: { app_id: string; branch?: string; target_server_ids?: string[] }) {
         const { data } = await api.post('/deployments', payload);
         return data;
     },
@@ -21,4 +21,19 @@ export const deployService = {
         const { data } = await api.get(`/deployments/${id}/logs`);
         return data;
     },
+    async listTargets(id: string): Promise<{ targets: DeployTarget[] }> {
+        const { data } = await api.get(`/deployments/${id}/targets`);
+        return data;
+    },
 };
+
+export interface DeployTarget {
+    id: string;
+    deployment_id: string;
+    server_id: string;
+    status: string;
+    build_log: string;
+    commit_hash: string;
+    started_at: string | null;
+    completed_at: string | null;
+}

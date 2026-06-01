@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,21 +43,69 @@ func (s *DeployService) Create(ctx context.Context, userID uuid.UUID, req models
 	return d, nil
 }
 
-// TriggerDeploy creates a deployment record AND executes it in the background
+// TriggerDeploy creates a deployment record AND executes it in the background.
+// When req.TargetServerIDs has 2+ entries the deployment fans out in parallel.
 func (s *DeployService) TriggerDeploy(ctx context.Context, userID uuid.UUID, req models.CreateDeploymentRequest) (*models.Deployment, error) {
 	d, err := s.Create(ctx, userID, req)
 	if err != nil {
 		return nil, err
 	}
 
-	// Execute deployment in background
-	go func() {
-		if err := s.ExecuteDeployment(context.Background(), d.ID.String()); err != nil {
-			log.Printf("❌ Deployment %s failed: %v", d.ID, err)
+	if len(req.TargetServerIDs) > 1 {
+		// Multi-server: insert deployment_targets rows, then fan-out.
+		for _, sid := range req.TargetServerIDs {
+			s.pool.Exec(ctx,
+				`INSERT INTO deployment_targets (deployment_id, server_id, status)
+				 VALUES ($1, $2, 'pending')
+				 ON CONFLICT (deployment_id, server_id) DO NOTHING`,
+				d.ID, sid)
 		}
-	}()
+		go func() {
+			s.fanOutDeploy(context.Background(), d, req.TargetServerIDs)
+		}()
+	} else {
+		go func() {
+			if err := s.ExecuteDeployment(context.Background(), d.ID.String()); err != nil {
+				log.Printf("❌ Deployment %s failed: %v", d.ID, err)
+			}
+		}()
+	}
 
 	return d, nil
+}
+
+// fanOutDeploy runs ExecuteDeploymentOnServer for each target in parallel.
+func (s *DeployService) fanOutDeploy(ctx context.Context, d *models.Deployment, serverIDs []string) {
+	var wg sync.WaitGroup
+	anyFailed := false
+	var mu sync.Mutex
+
+	for _, sid := range serverIDs {
+		wg.Add(1)
+		go func(serverID string) {
+			defer wg.Done()
+			if err := s.ExecuteDeploymentOnServer(ctx, d.ID.String(), serverID); err != nil {
+				log.Printf("❌ Multi-deploy %s → server %s failed: %v", d.ID, serverID, err)
+				mu.Lock()
+				anyFailed = true
+				mu.Unlock()
+			}
+		}(sid)
+	}
+	wg.Wait()
+
+	// Roll up status to the parent deployment row.
+	mu.Lock()
+	failed := anyFailed
+	mu.Unlock()
+
+	finalStatus := "success"
+	if failed {
+		finalStatus = "partial" // some targets failed
+	}
+	s.pool.Exec(ctx,
+		`UPDATE deployments SET status = $1, completed_at = NOW() WHERE id = $2`,
+		finalStatus, d.ID)
 }
 
 // ExecuteDeployment runs the actual git clone/pull, build, and restart pipeline on the target server
@@ -183,6 +232,142 @@ fi
 		logBuilder.String(), completedAt, deployID)
 
 	return nil
+}
+
+// ExecuteDeploymentOnServer runs the deploy pipeline on a specific server and
+// records per-server progress in the deployment_targets table.
+func (s *DeployService) ExecuteDeploymentOnServer(ctx context.Context, deploymentID, serverID string) error {
+	// Mark target as running
+	now := time.Now()
+	s.pool.Exec(ctx,
+		`UPDATE deployment_targets SET status = 'running', started_at = $1
+		 WHERE deployment_id = $2 AND server_id = $3`,
+		now, deploymentID, serverID)
+
+	// Fetch app details from the parent deployment
+	var appName, gitRepo, gitBranch, runtime, deployBranch string
+	var deployID uuid.UUID
+	err := s.pool.QueryRow(ctx,
+		`SELECT d.id, d.branch, a.name, a.git_repo, a.git_branch, a.runtime
+		 FROM deployments d
+		 JOIN applications a ON d.app_id = a.id
+		 WHERE d.id = $1`, deploymentID,
+	).Scan(&deployID, &deployBranch, &appName, &gitRepo, &gitBranch, &runtime)
+	if err != nil {
+		return s.failTarget(ctx, deploymentID, serverID, fmt.Sprintf("fetch deployment: %v", err))
+	}
+
+	branch := deployBranch
+	if branch == "" {
+		branch = gitBranch
+	}
+	if branch == "" {
+		branch = "main"
+	}
+
+	server, err := s.getServerInfo(ctx, serverID)
+	if err != nil {
+		return s.failTarget(ctx, deploymentID, serverID, fmt.Sprintf("server unavailable: %v", err))
+	}
+
+	var logBuilder strings.Builder
+	appendLog := func(msg string) {
+		logBuilder.WriteString(fmt.Sprintf("[%s] %s\n", time.Now().Format("15:04:05"), msg))
+		s.pool.Exec(ctx,
+			`UPDATE deployment_targets SET build_log = $1 WHERE deployment_id = $2 AND server_id = $3`,
+			logBuilder.String(), deploymentID, serverID)
+	}
+
+	appDir := fmt.Sprintf("/opt/novapanel/apps/%s", appName)
+	appendLog(fmt.Sprintf("📦 Deploying %s to server %s (branch: %s)", appName, serverID, branch))
+
+	gitScript := fmt.Sprintf(`
+if [ -d "%s/.git" ]; then
+    cd "%s"; git fetch --all 2>&1; git checkout %s 2>&1; git reset --hard origin/%s 2>&1
+    echo "COMMIT:$(git rev-parse --short HEAD)"
+else
+    mkdir -p "%s"; git clone --branch %s "%s" "%s" 2>&1
+    cd "%s"; echo "COMMIT:$(git rev-parse --short HEAD)"
+fi
+`, appDir, appDir, branch, branch, appDir, branch, gitRepo, appDir, appDir)
+
+	output, err := provisioner.RunScript(server, gitScript)
+	if err != nil {
+		appendLog(fmt.Sprintf("❌ Git failed: %v\n%s", err, output))
+		return s.failTarget(ctx, deploymentID, serverID, logBuilder.String())
+	}
+	appendLog(output)
+
+	// Capture commit hash
+	var commitHash string
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "COMMIT:") {
+			commitHash = strings.TrimSpace(strings.TrimPrefix(line, "COMMIT:"))
+		}
+	}
+
+	buildScript := s.getBuildScript(runtime, appDir)
+	if buildScript != "" {
+		appendLog(fmt.Sprintf("🔨 Building (%s)...", runtime))
+		output, err = provisioner.RunScript(server, buildScript)
+		if err != nil {
+			appendLog(fmt.Sprintf("❌ Build failed: %v\n%s", err, output))
+			return s.failTarget(ctx, deploymentID, serverID, logBuilder.String())
+		}
+		appendLog(output)
+	}
+
+	restartScript := s.getRestartScript(runtime, appName, appDir)
+	if restartScript != "" {
+		appendLog("🔄 Restarting application...")
+		output, err = provisioner.RunScript(server, restartScript)
+		if err != nil {
+			appendLog(fmt.Sprintf("⚠️ Restart warning: %v\n%s", err, output))
+		} else {
+			appendLog(output)
+		}
+	}
+
+	completedAt := time.Now()
+	appendLog(fmt.Sprintf("✅ Done in %s", completedAt.Sub(now).Round(time.Second)))
+	s.pool.Exec(ctx,
+		`UPDATE deployment_targets
+		 SET status = 'success', build_log = $1, commit_hash = $2, completed_at = $3
+		 WHERE deployment_id = $4 AND server_id = $5`,
+		logBuilder.String(), commitHash, completedAt, deploymentID, serverID)
+	return nil
+}
+
+func (s *DeployService) failTarget(ctx context.Context, deploymentID, serverID, msg string) error {
+	s.pool.Exec(ctx,
+		`UPDATE deployment_targets SET status = 'failed', build_log = $1, completed_at = NOW()
+		 WHERE deployment_id = $2 AND server_id = $3`,
+		msg, deploymentID, serverID)
+	return errors.New(msg)
+}
+
+// ListTargets returns per-server results for a multi-server deployment.
+func (s *DeployService) ListTargets(ctx context.Context, deploymentID string) ([]models.DeploymentTarget, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, deployment_id, server_id, status,
+		        COALESCE(build_log,''), COALESCE(commit_hash,''),
+		        started_at, completed_at, created_at
+		 FROM deployment_targets WHERE deployment_id = $1 ORDER BY created_at`, deploymentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var targets []models.DeploymentTarget
+	for rows.Next() {
+		var t models.DeploymentTarget
+		if err := rows.Scan(&t.ID, &t.DeploymentID, &t.ServerID, &t.Status,
+			&t.BuildLog, &t.CommitHash, &t.StartedAt, &t.CompletedAt, &t.CreatedAt); err != nil {
+			continue
+		}
+		targets = append(targets, t)
+	}
+	return targets, nil
 }
 
 // Redeploy re-triggers a deployment for an existing app with same or new branch

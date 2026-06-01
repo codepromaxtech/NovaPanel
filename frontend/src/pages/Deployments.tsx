@@ -3,8 +3,9 @@ import {
     Rocket, GitBranch, CheckCircle, XCircle, Loader, Clock,
     ChevronDown, Plus, X, Play, RotateCcw, ScrollText,
     Code2, Globe, Server, AlertCircle, Trash2, KeyRound, Eye, EyeOff, Lock,
+    Layers,
 } from 'lucide-react';
-import { deployService } from '../services/deployments';
+import { deployService, DeployTarget } from '../services/deployments';
 import { appService, Application } from '../services/applications';
 import { serverService } from '../services/servers';
 import api from '../services/api';
@@ -13,6 +14,7 @@ import { useToast } from '../components/ui/ToastProvider';
 interface DeployEntry {
     id: string; app_id: string; branch: string; commit_hash: string;
     status: string; build_log: string; created_at: string; completed_at: string;
+    targets?: DeployTarget[];
 }
 
 const statusConfig: Record<string, { icon: any; color: string; bg: string }> = {
@@ -20,6 +22,7 @@ const statusConfig: Record<string, { icon: any; color: string; bg: string }> = {
     failed: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
     running: { icon: Loader, color: 'text-blue-400', bg: 'bg-blue-500/10' },
     pending: { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
+    partial: { icon: AlertCircle, color: 'text-orange-400', bg: 'bg-orange-500/10' },
 };
 
 const runtimeOptions = [
@@ -51,7 +54,11 @@ export default function Deployments() {
     const [showDeploy, setShowDeploy] = useState(false);
     const [deployAppId, setDeployAppId] = useState('');
     const [deployBranch, setDeployBranch] = useState('main');
+    const [deployTargetServerIds, setDeployTargetServerIds] = useState<string[]>([]);
     const [deploying, setDeploying] = useState(false);
+
+    // Per-server target logs
+    const [expandedTargets, setExpandedTargets] = useState<Record<string, DeployTarget[]>>({});
 
     // Env vars modal
     const [envApp, setEnvApp] = useState<Application | null>(null);
@@ -123,17 +130,45 @@ export default function Deployments() {
         if (!deployAppId) return;
         setDeploying(true);
         try {
-            const d = await deployService.create({ app_id: deployAppId, branch: deployBranch });
-            toast.success('Deployment triggered');
+            const payload: { app_id: string; branch?: string; target_server_ids?: string[] } = {
+                app_id: deployAppId,
+                branch: deployBranch,
+            };
+            if (deployTargetServerIds.length > 1) {
+                payload.target_server_ids = deployTargetServerIds;
+            }
+            const d = await deployService.create(payload);
+            toast.success(deployTargetServerIds.length > 1
+                ? `Multi-server deployment triggered (${deployTargetServerIds.length} servers)`
+                : 'Deployment triggered');
             setShowDeploy(false);
+            setDeployTargetServerIds([]);
             fetchAll();
-            // Auto-open logs for the new deployment
             openLogs(d.id);
         } catch (err: any) {
             toast.error(err?.response?.data?.error || 'Deployment failed');
         } finally {
             setDeploying(false);
         }
+    };
+
+    const loadTargets = async (deployId: string) => {
+        try {
+            const { targets } = await deployService.listTargets(deployId);
+            setExpandedTargets(prev => ({ ...prev, [deployId]: targets || [] }));
+        } catch { /* no targets */ }
+    };
+
+    const toggleExpand = (id: string) => {
+        const next = expandedId === id ? null : id;
+        setExpandedId(next);
+        if (next) loadTargets(next);
+    };
+
+    const toggleServerTarget = (sid: string) => {
+        setDeployTargetServerIds(prev =>
+            prev.includes(sid) ? prev.filter(s => s !== sid) : [...prev, sid]
+        );
     };
 
     const handleRedeploy = async (deployId: string) => {
@@ -356,10 +391,11 @@ export default function Deployments() {
                         {deploys.map((d, i) => {
                             const { icon: StatusIcon, color, bg } = statusConfig[d.status] || statusConfig.pending;
                             const isExpanded = expandedId === d.id;
+                            const targets = expandedTargets[d.id] || [];
                             return (
                                 <div key={d.id} className="glass-card rounded-xl overflow-hidden hover:border-white/10 transition-all"
                                     style={{ animationDelay: `${i * 40}ms` }}>
-                                    <div className="flex items-center justify-between p-4 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : d.id)}>
+                                    <div className="flex items-center justify-between p-4 cursor-pointer" onClick={() => toggleExpand(d.id)}>
                                         <div className="flex items-center gap-4">
                                             <div className={`p-2 rounded-lg ${bg}`}>
                                                 <StatusIcon className={`w-4 h-4 ${color} ${d.status === 'running' ? 'animate-spin' : ''}`} />
@@ -399,16 +435,50 @@ export default function Deployments() {
                                         </div>
                                     </div>
                                     {isExpanded && (
-                                        <div className="border-t border-white/5 p-4 bg-black/20">
-                                            <div className="flex justify-end mb-2">
-                                                <button onClick={() => openLogs(d.id)}
-                                                    className="text-[10px] px-2 py-1 rounded bg-white/5 text-surface-200/40 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1">
-                                                    <ScrollText className="w-3 h-3" /> Full Logs
-                                                </button>
-                                            </div>
-                                            <pre className="text-xs text-surface-200/50 font-mono leading-5 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar">
-                                                {d.build_log || `[deploy] Deployment ${d.status}\n[deploy] Branch: ${d.branch}\n[deploy] No build log available`}
-                                            </pre>
+                                        <div className="border-t border-white/5 p-4 bg-black/20 space-y-3">
+                                            {/* Per-server targets (multi-deploy) */}
+                                            {targets.length > 0 && (
+                                                <div>
+                                                    <p className="text-[10px] font-semibold text-surface-200/40 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                                        <Layers className="w-3 h-3" /> Server Targets
+                                                    </p>
+                                                    <div className="space-y-1.5">
+                                                        {targets.map(t => {
+                                                            const cfg = statusConfig[t.status] || statusConfig.pending;
+                                                            const TIcon = cfg.icon;
+                                                            const srv = servers.find(s => s.id === t.server_id);
+                                                            return (
+                                                                <details key={t.id} className="rounded-lg bg-white/5 border border-white/5 overflow-hidden">
+                                                                    <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none text-xs">
+                                                                        <TIcon className={`w-3.5 h-3.5 ${cfg.color} flex-shrink-0 ${t.status === 'running' ? 'animate-spin' : ''}`} />
+                                                                        <span className="text-surface-200/80 font-medium">{srv?.name || t.server_id.slice(0, 8)}</span>
+                                                                        <span className={`ml-auto text-[10px] ${cfg.color}`}>{t.status}</span>
+                                                                        {t.commit_hash && <span className="text-[10px] font-mono text-surface-200/30">{t.commit_hash}</span>}
+                                                                    </summary>
+                                                                    <pre className="text-[11px] text-green-300 font-mono leading-5 whitespace-pre-wrap max-h-40 overflow-y-auto custom-scrollbar bg-[#0d1117] p-3">
+                                                                        {t.build_log || 'No log yet'}
+                                                                    </pre>
+                                                                </details>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Single-server build log */}
+                                            {targets.length === 0 && (
+                                                <>
+                                                    <div className="flex justify-end">
+                                                        <button onClick={() => openLogs(d.id)}
+                                                            className="text-[10px] px-2 py-1 rounded bg-white/5 text-surface-200/40 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1">
+                                                            <ScrollText className="w-3 h-3" /> Full Logs
+                                                        </button>
+                                                    </div>
+                                                    <pre className="text-xs text-surface-200/50 font-mono leading-5 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scrollbar">
+                                                        {d.build_log || `[deploy] Deployment ${d.status}\n[deploy] Branch: ${d.branch}\n[deploy] No build log available`}
+                                                    </pre>
+                                                </>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -497,11 +567,11 @@ export default function Deployments() {
 
             {/* ═══════ Deploy Modal ═══════ */}
             {showDeploy && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowDeploy(false)}>
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { setShowDeploy(false); setDeployTargetServerIds([]); }}>
                     <div className="glass-card rounded-2xl p-8 w-full max-w-md mx-4 animate-fade-in" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-xl font-bold text-white flex items-center gap-2"><Rocket className="w-5 h-5 text-nova-400" /> Trigger Deployment</h2>
-                            <button onClick={() => setShowDeploy(false)} className="text-surface-200/40 hover:text-white"><X className="w-5 h-5" /></button>
+                            <button onClick={() => { setShowDeploy(false); setDeployTargetServerIds([]); }} className="text-surface-200/40 hover:text-white"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="space-y-4">
                             <div>
@@ -523,15 +593,47 @@ export default function Deployments() {
                                     className="w-full px-4 py-2.5 rounded-xl glass-input text-white text-sm focus:outline-none focus:ring-2 focus:ring-nova-500/30 placeholder:text-surface-200/20"
                                     placeholder="main" />
                             </div>
+
+                            {/* Multi-server target selector (Enterprise) */}
+                            {servers.length > 1 && (
+                                <div>
+                                    <label className="block text-sm font-medium text-surface-200 mb-1.5 flex items-center gap-1.5">
+                                        <Layers className="w-3.5 h-3.5 text-nova-400" /> Target Servers
+                                        <span className="text-[10px] text-surface-200/40 font-normal">(select multiple for fan-out · Enterprise)</span>
+                                    </label>
+                                    <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar pr-1">
+                                        {servers.map(srv => (
+                                            <label key={srv.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                                                deployTargetServerIds.includes(srv.id)
+                                                    ? 'bg-nova-500/10 border border-nova-500/30'
+                                                    : 'bg-white/5 border border-white/5 hover:bg-white/10'
+                                            }`}>
+                                                <input type="checkbox" checked={deployTargetServerIds.includes(srv.id)}
+                                                    onChange={() => toggleServerTarget(srv.id)}
+                                                    className="rounded accent-nova-500 w-3.5 h-3.5 flex-shrink-0" />
+                                                <Server className="w-3 h-3 text-surface-200/40 flex-shrink-0" />
+                                                <span className="text-xs text-surface-200/80 truncate">{srv.name}</span>
+                                                <span className="text-[10px] text-surface-200/30 ml-auto flex-shrink-0">{srv.ip_address}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    {deployTargetServerIds.length > 1 && (
+                                        <p className="text-[10px] text-nova-400/70 mt-1.5 flex items-center gap-1">
+                                            <Layers className="w-3 h-3" /> {deployTargetServerIds.length} servers selected — fan-out deployment
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="flex gap-3 pt-2">
-                                <button onClick={() => setShowDeploy(false)}
+                                <button onClick={() => { setShowDeploy(false); setDeployTargetServerIds([]); }}
                                     className="flex-1 py-2.5 rounded-xl border border-white/10 text-surface-200/60 text-sm hover:bg-white/5 transition-colors">
                                     Cancel
                                 </button>
                                 <button onClick={handleDeploy} disabled={deploying || !deployAppId}
                                     className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-nova-600 to-nova-700 text-white text-sm font-medium hover:shadow-lg hover:shadow-nova-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
                                     {deploying ? <Loader className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
-                                    {deploying ? 'Deploying...' : 'Deploy'}
+                                    {deploying ? 'Deploying...' : deployTargetServerIds.length > 1 ? `Deploy to ${deployTargetServerIds.length} Servers` : 'Deploy'}
                                 </button>
                             </div>
                         </div>
