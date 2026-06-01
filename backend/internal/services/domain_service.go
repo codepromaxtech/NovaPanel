@@ -424,9 +424,9 @@ func (s *DomainService) Create(ctx context.Context, userID string, req models.Cr
 	uid, _ := uuid.Parse(userID)
 	domain := &models.Domain{}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO domains (user_id, server_id, name, type, document_root, web_server, php_version, status, is_load_balancer, system_user)
+		`INSERT INTO domains (user_id, server_id, name, type, document_root, web_server, php_version, status, is_load_balancer, "system_user")
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		 RETURNING id, user_id, server_id, name, type, document_root, web_server, php_version, ssl_enabled, status, system_user, is_load_balancer, created_at, updated_at`,
+		 RETURNING id, user_id, server_id, name, type, document_root, web_server, php_version, ssl_enabled, status, "system_user", is_load_balancer, created_at, updated_at`,
 		uid, serverID, req.Name, domainType, docRoot, webServer, phpVersion, "provisioning", req.IsLoadBalancer, systemUser,
 	).Scan(&domain.ID, &domain.UserID, &domain.ServerID, &domain.Name, &domain.Type,
 		&domain.DocumentRoot, &domain.WebServer, &domain.PHPVersion, &domain.SSLEnabled,

@@ -1,5 +1,5 @@
 -- Add system_user column to domains for per-domain OS user isolation
-ALTER TABLE domains ADD COLUMN IF NOT EXISTS system_user VARCHAR(32) DEFAULT '';
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS "system_user" VARCHAR(32) DEFAULT '';
 
 -- Add php_versions table for tracking installed PHP versions per server
 CREATE TABLE IF NOT EXISTS php_versions (
