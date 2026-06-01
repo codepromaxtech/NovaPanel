@@ -182,9 +182,11 @@ func runCloudflareSSH(server ServerInfo, script string, useSudo bool) (string, e
 
 // RunScriptLocally runs a script on the host system by entering host namespaces
 // via nsenter. Requires the container to run with pid:host and SYS_PTRACE cap.
+// Note: -i (IPC namespace) is omitted — Linux 5.8+ requires CAP_SYS_ADMIN for
+// setns(CLONE_NEWIPC), which is not granted; shell scripts do not need it.
 func RunScriptLocally(script string) (string, error) {
 	innerScript := fmt.Sprintf("set -e\nexport DEBIAN_FRONTEND=noninteractive\n%s", script)
-	cmd := exec.Command("nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "bash", "-c", innerScript)
+	cmd := exec.Command("nsenter", "-t", "1", "-m", "-u", "-n", "-p", "--", "bash", "-c", innerScript)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
