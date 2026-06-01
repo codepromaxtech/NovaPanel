@@ -8,6 +8,7 @@ on:
 env:
   API_IMAGE: codepromax24/novapanel-api
   AUTOMATION_IMAGE: codepromax24/novapanel-automation
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-api:
@@ -39,7 +40,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: backend/Dockerfile
@@ -80,7 +81,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push Automation
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: automation
           file: automation/Dockerfile
